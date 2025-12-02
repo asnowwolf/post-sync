@@ -1,10 +1,11 @@
 import Database from 'better-sqlite3';
 import * as path from 'path';
 import * as fs from 'fs';
-import {logger} from '../logger.js';
-import {DbError} from '../errors.js';
+import { logger } from '../logger.js';
+import { DbError } from '../errors.js';
+import { getPostSyncWorkDir } from '../utils/file.util.js';
 
-const DB_DIR = path.resolve(process.cwd(), '.ps');
+const DB_DIR = getPostSyncWorkDir();
 const DB_PATH = path.join(DB_DIR, 'db.sqlite');
 
 export class DbService {
@@ -12,9 +13,6 @@ export class DbService {
 
     constructor() {
         try {
-            // Ensure the .ps directory exists
-            fs.mkdirSync(DB_DIR, {recursive: true});
-
             this.db = new Database(DB_PATH);
             logger.info(`Database connected at ${DB_PATH}`);
             this.init();
@@ -66,8 +64,6 @@ export class DbService {
         transaction();
     }
 
-    // e.g., getArticleByPath, insertDraft, etc.
-
     public findArticleByPath(sourcePath: string): { id: number; source_hash: string } | undefined {
         const stm = this.db.prepare('SELECT id, source_hash FROM articles WHERE source_path = ?');
         return stm.get(sourcePath) as { id: number; source_hash: string } | undefined;
@@ -110,5 +106,12 @@ export class DbService {
         );
         const now = new Date().toISOString();
         return stm.run(draftId, publishId, now);
+    }
+
+    public hasArticleBeenPublished(articleId: number): boolean {
+        const stm = this.db.prepare(
+            'SELECT 1 FROM drafts d JOIN publications p ON d.id = p.draft_id WHERE d.article_id = ? LIMIT 1'
+        );
+        return !!stm.get(articleId);
     }
 }

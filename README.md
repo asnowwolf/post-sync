@@ -39,35 +39,63 @@ npm run build
 
 ### 3. 配置
 
-在项目根目录下创建一个 `.env` 文件，并配置你的微信公众号凭证：
+工具将使用 `~/.post-sync` 目录作为其工作目录，并在其中管理配置和数据库文件。
 
-```env
-WECHAT_APP_ID=your_app_id
-WECHAT_APP_SECRET=your_app_secret
+请在 `~/.post-sync/config.json` 文件中配置你的微信公众号凭证和 profile：
+
+```json
+{
+  "wechatApiBaseUrl": "https://proxy-wechat.zhizuo.biz",
+  "profiles": [
+    {
+      "id": "default",
+      "appId": "your_default_app_id",
+      "appSecret": "your_default_app_secret"
+    },
+    {
+      "id": "tech_blog",
+      "appId": "your_tech_blog_app_id",
+      "appSecret": "your_tech_blog_app_secret"
+    }
+  ]
+}
 ```
 
-> **注意**: 请确保你的公众号是服务号或已认证的订阅号，并且拥有调用相关接口的权限。
+> **注意**:
+> - `wechatApiBaseUrl` 是公共配置，适用于所有 profile。
+> - `profiles` 数组中可以定义多个公众号配置，每个配置都有一个唯一的 `id`。
+> - 如果未指定 `--profile` 参数，将使用 `profiles` 列表中的第一个 profile 作为默认值。
+> - 请确保你的公众号是服务号或已认证的订阅号，并且拥有调用相关接口的权限。
+> - 待发布目录（即你存放 Markdown 文件的目录）将被视为**只读**。工具不会在其中写入任何文件或创建 `.ps` 目录。
+> - 数据库中将使用**绝对路径**记录被发布的文件。
+
 
 ## 📖 使用指南
 
-工具主要包含两个核心命令：`create` 和 `publish`。
+工具主要包含三个核心命令：`create`、`publish` 和 `post`。
 
 ### 1. 创建草稿 (Create)
 
 读取指定目录下的 Markdown 文件，处理图片素材，并将其作为草稿上传到微信公众号。
 
 ```bash
-# 运行方式 1: 使用 npm script
+# 运行方式 1: 使用 npm script (使用默认 profile)
 npm start create ./contents/my-article.md
 
-# 运行方式 2: 如果已全局安装或在 dist 目录下
+# 运行方式 2: 使用 npm script (指定 profile)
+npm start create ./contents/my-article.md -- --profile tech_blog
+
+# 运行方式 3: 如果已全局安装或在 dist 目录下 (使用默认 profile)
 node dist/index.js create ./contents/
+
+# 运行方式 4: 如果已全局安装或在 dist 目录下 (指定 profile)
+node dist/index.js create ./contents/ --profile tech_blog
 ```
 
 **命令行为说明**:
 
 - **扫描**: 递归扫描指定路径下的所有 `.md` 文件。
-- **封面**: 自动查找与 `.md` 文件同名的 `.png` 文件（例如 `article.md` 对应 `article.png`
+- **封面**: 自动查找与 `.md` 文件同名的 `.png` 图片（例如 `article.md` 对应 `article.png`
   ）作为封面。如果正文中引用了该封面图，工具会自动将其从正文中移除，避免重复显示。
 - **标题**: 自动提取 Markdown 文件中的第一个一级标题 (`# 标题`) 作为公众号文章标题。
 - **去重**: 首次运行会建立本地数据库记录。再次运行时，如果文件内容未发生变更（Hash 值一致），则会自动跳过。
@@ -77,8 +105,11 @@ node dist/index.js create ./contents/
 将已经通过 `create` 命令上传到草稿箱的文章正式发布。
 
 ```bash
-# 发布指定目录下的文章
+# 发布指定目录下的文章 (使用默认 profile)
 npm start publish ./contents/my-article.md
+
+# 发布指定目录下的文章 (指定 profile)
+npm start publish ./contents/my-article.md -- --profile tech_blog
 ```
 
 **命令行为说明**:
@@ -86,6 +117,30 @@ npm start publish ./contents/my-article.md
 - 工具会根据文件路径在本地数据库中查找对应的草稿记录。
 - 只有成功执行过 `create` 且存在有效 `media_id` 的文章才能被发布。
 - 发布成功后，会返回 `publish_id` 并在日志中确认。
+
+### 3. 一键发布 (Post)
+
+此命令结合了 `create` 和 `publish` 的功能，简化了文章的发布流程。它会首先处理 Markdown 文件生成草稿，如果成功，则立即尝试发布文章。
+
+```bash
+# 一键发布指定目录下的文章 (使用默认 profile)
+npm start post ./contents/my-article.md
+
+# 一键发布指定目录下的文章 (指定 profile)
+npm start post ./contents/my-article.md -- --profile tech_blog
+
+# 或者发布整个目录下的所有更新文章 (使用默认 profile)
+npm start post ./contents/
+
+# 或者发布整个目录下的所有更新文章 (指定 profile)
+npm start post ./contents/ --profile tech_blog
+```
+
+**命令行为说明**:
+
+- **智能判断**: 对于未发布过的新文章或内容有更新的旧文章，会自动执行 `create` -> `publish` 流程。
+- **增量更新**: 如果文章内容未发生变化且已发布，则跳过处理。
+- **错误处理**: 如果 `create` 步骤失败（例如图片上传失败），则不会进行 `publish`。
 
 ## 📂 文件组织规范示例
 

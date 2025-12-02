@@ -1,8 +1,8 @@
-import {beforeEach, describe, expect, it, vi} from 'vitest';
-import {DbService} from './db.service.js';
-import * as fs from 'fs';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { DbService } from './db.service.js';
+import * as path from 'path';
 
-// Mock values
+// Mock values for better-sqlite3
 const mockRun = vi.fn();
 const mockGet = vi.fn();
 const mockExec = vi.fn();
@@ -16,10 +16,12 @@ const mockTransaction = vi.fn((cb) => cb);
 vi.mock('better-sqlite3', () => {
     return {
         default: class MockDatabase {
-            constructor() {
-                // Constructor implementation if needed
+            constructor(dbPath: string) {
+                // Ensure constructor receives the correct path
+                if (!dbPath.includes('.post-sync') || !dbPath.endsWith('db.sqlite')) {
+                    throw new Error('MockDatabase constructor received unexpected path: ' + dbPath);
+                }
             }
-
             prepare = mockPrepare;
             exec = mockExec;
             transaction = mockTransaction;
@@ -27,12 +29,6 @@ vi.mock('better-sqlite3', () => {
     };
 });
 
-// Mock fs
-vi.mock('fs', async () => {
-    return {
-        mkdirSync: vi.fn(),
-    };
-});
 
 describe('DbService', () => {
     let dbService: DbService;
@@ -42,37 +38,32 @@ describe('DbService', () => {
         dbService = new DbService();
     });
 
-    it('should connect to the database and initialize the schema on construction', () => {
-        expect(fs.mkdirSync).toHaveBeenCalledWith(expect.any(String), {recursive: true});
-        // Since we are mocking the class, checking if it was called is tricky with vi.mock factory.
-        // We can trust that new Database() happened if we got the instance.
+    it('should initialize the schema on construction', () => {
+        // mkdirSync is called by getPostSyncWorkDir, which is mocked, so we don't check it here directly.
         expect(mockExec).toHaveBeenCalledWith(expect.stringContaining('CREATE TABLE IF NOT EXISTS articles'));
+        expect(mockExec).toHaveBeenCalledWith(expect.stringContaining('CREATE TABLE IF NOT EXISTS drafts'));
+        expect(mockExec).toHaveBeenCalledWith(expect.stringContaining('CREATE TABLE IF NOT EXISTS publications'));
     });
 
-    // ... rest of the tests ...
-    // Skipping the 'throw error on connection' test for now as it requires re-mocking the class which is hard with factory.
-    // Or we can add a static method to the mock class to trigger error? No.
-    // I'll comment out the failing connection test for brevity, or implement it by spying on the prototype?
-
     it('should find an article by path', () => {
-        const expectedArticle = {id: 1, source_hash: 'hash123'};
+        const expectedArticle = { id: 1, source_hash: 'hash123' };
         mockGet.mockReturnValue(expectedArticle);
 
-        const article = dbService.findArticleByPath('/path/to/article.md');
+        const article = dbService.findArticleByPath('/absolute/path/to/article.md');
 
         expect(mockPrepare).toHaveBeenCalledWith('SELECT id, source_hash FROM articles WHERE source_path = ?');
-        expect(mockGet).toHaveBeenCalledWith('/path/to/article.md');
+        expect(mockGet).toHaveBeenCalledWith('/absolute/path/to/article.md');
         expect(article).toEqual(expectedArticle);
     });
 
     it('should insert a new article', () => {
-        const path = '/path/to/new-article.md';
+        const filePath = '/absolute/path/to/new-article.md';
         const hash = 'newhash456';
 
-        dbService.insertArticle(path, hash);
+        dbService.insertArticle(filePath, hash);
 
         expect(mockPrepare).toHaveBeenCalledWith(expect.stringContaining('INSERT INTO articles'));
-        expect(mockRun).toHaveBeenCalledWith(path, hash, expect.any(String), expect.any(String));
+        expect(mockRun).toHaveBeenCalledWith(filePath, hash, expect.any(String), expect.any(String));
     });
 
     it('should update an article hash', () => {
@@ -96,7 +87,7 @@ describe('DbService', () => {
     });
 
     it('should find the latest draft by article ID', () => {
-        const expectedDraft = {id: 2, media_id: 'latest_media_id'};
+        const expectedDraft = { id: 2, media_id: 'latest_media_id' };
         mockGet.mockReturnValue(expectedDraft);
 
         const draft = dbService.findLatestDraftByArticleId(1);
@@ -121,5 +112,21 @@ describe('DbService', () => {
         dbService.performTransaction(callback);
         expect(mockTransaction).toHaveBeenCalledWith(callback);
         expect(callback).toHaveBeenCalled();
+    });
+
+    it('should return true if an article has been published', () => {
+        mockGet.mockReturnValue({1: 1}); // Simulate a row being found
+        const isPublished = dbService.hasArticleBeenPublished(1);
+        expect(mockPrepare).toHaveBeenCalledWith(expect.stringContaining('SELECT 1 FROM drafts d JOIN publications p ON d.id = p.draft_id WHERE d.article_id = ? LIMIT 1'));
+        expect(mockGet).toHaveBeenCalledWith(1);
+        expect(isPublished).toBe(true);
+    });
+
+    it('should return false if an article has not been published', () => {
+        mockGet.mockReturnValue(undefined); // Simulate no row being found
+        const isPublished = dbService.hasArticleBeenPublished(1);
+        expect(mockPrepare).toHaveBeenCalledWith(expect.stringContaining('SELECT 1 FROM drafts d JOIN publications p ON d.id = p.draft_id WHERE d.article_id = ? LIMIT 1'));
+        expect(mockGet).toHaveBeenCalledWith(1);
+        expect(isPublished).toBe(false);
     });
 });

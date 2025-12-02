@@ -405,4 +405,67 @@ export class WeChatService {
             throw new ApiError(`Failed to batch get published articles: ${error.message}`, error.response?.status, error.response?.data);
         }
     }
+
+    public async deleteDraft(mediaId: string): Promise<void> {
+        const token = await this.getAccessToken();
+        const url = `${this.options.wechatApiBaseUrl}/cgi-bin/draft/delete?access_token=${token}`;
+        const data = { media_id: mediaId };
+
+        logger.info(`Deleting draft '${mediaId}'...`);
+        try {
+            await retry(async () => {
+                const res = await this.http.post(url, data);
+                if (res.data.errcode) {
+                    throw new ApiError(`WeChat API Error: ${res.data.errmsg}`, res.status, res.data);
+                }
+                return res;
+            }, {
+                delayMs: 15000,
+                backoffStrategy: 'exponential',
+                maxDelayMs: 60000,
+                maxAttempts: 4
+            });
+            logger.info(`Successfully deleted draft '${mediaId}'.`);
+        } catch (error: any) {
+            logger.error(`Failed to delete draft after retries:`, error.message);
+            if (error instanceof ApiError) {
+                throw error;
+            }
+            throw new ApiError(`Failed to delete draft: ${error.message}`, error.response?.status, error.response?.data);
+        }
+    }
+
+    public async batchGetDrafts(offset: number, count: number): Promise<any> {
+        const token = await this.getAccessToken();
+        const url = `${this.options.wechatApiBaseUrl}/cgi-bin/draft/batchget?access_token=${token}`;
+        const data = {
+            offset,
+            count,
+            no_content: 1
+        };
+
+        logger.info(`Batch getting drafts (offset: ${offset}, count: ${count})...`);
+        try {
+            const response = await retry(async () => {
+                const res = await this.http.post(url, data);
+                if (res.data.errcode) {
+                    throw new ApiError(`WeChat API Error: ${res.data.errmsg}`, res.status, res.data);
+                }
+                return res;
+            }, {
+                delayMs: 15000,
+                backoffStrategy: 'exponential',
+                maxDelayMs: 60000,
+                maxAttempts: 4
+            });
+
+            return response.data;
+        } catch (error: any) {
+            logger.error(`Failed to batch get drafts after retries:`, error.message);
+            if (error instanceof ApiError) {
+                throw error;
+            }
+            throw new ApiError(`Failed to batch get drafts: ${error.message}`, error.response?.status, error.response?.data);
+        }
+    }
 }

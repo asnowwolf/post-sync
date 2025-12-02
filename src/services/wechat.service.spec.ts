@@ -166,4 +166,41 @@ describe('WeChatService', () => {
         );
         expect(result).toEqual(mockResponse);
     });
+
+    it('should delete draft', async () => {
+        const mediaId = 'draft_media_id_to_delete';
+        mockPost.mockResolvedValueOnce({
+            data: { errcode: 0, errmsg: 'ok' },
+            status: 200,
+        });
+
+        await wechatService.deleteDraft(mediaId);
+
+        expect(mockPost).toHaveBeenCalledWith(
+            `${mockConfig.wechatApiBaseUrl}/cgi-bin/draft/delete?access_token=valid_token`,
+            { media_id: mediaId }
+        );
+    });
+
+    it('should batch get drafts', async () => {
+        const offset = 0;
+        const count = 20;
+        const mockResponse = {
+            total_count: 5,
+            item_count: 5,
+            item: [],
+        };
+        mockPost.mockResolvedValueOnce({
+            data: mockResponse,
+            status: 200,
+        });
+
+        const result = await wechatService.batchGetDrafts(offset, count);
+
+        expect(mockPost).toHaveBeenCalledWith(
+            `${mockConfig.wechatApiBaseUrl}/cgi-bin/draft/batchget?access_token=valid_token`,
+            { offset, count, no_content: 1 }
+        );
+        expect(result).toEqual(mockResponse);
+    });
 });

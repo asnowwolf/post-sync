@@ -33,6 +33,8 @@ const mocks = vi.hoisted(() => {
         mockGetPublishStatus: vi.fn(),
         mockDeletePublishedArticle: vi.fn(),
         mockBatchGetPublishedArticles: vi.fn(),
+        mockDeleteDraft: vi.fn(),
+        mockBatchGetDrafts: vi.fn(),
 
         // MarkdownService
         mockConvert: vi.fn().mockImplementation((_wechatService: any, _dbService: any, _author?: string, _digest?: string) => {
@@ -118,6 +120,8 @@ vi.mock('./services/wechat.service.js', () => {
                 getPublishStatus: mocks.mockGetPublishStatus,
                 deletePublishedArticle: mocks.mockDeletePublishedArticle,
                 batchGetPublishedArticles: mocks.mockBatchGetPublishedArticles,
+                deleteDraft: mocks.mockDeleteDraft,
+                batchGetDrafts: mocks.mockBatchGetDrafts,
             };
         }),
     };
@@ -184,6 +188,14 @@ vi.mock('fs', async (importOriginal) => {
     };
 });
 
+// 8. Mock crypto
+vi.mock('crypto', () => ({
+    createHash: vi.fn(() => ({
+        update: vi.fn().mockReturnThis(),
+        digest: vi.fn().mockReturnValue(TEST_SHA1_HASH),
+    })),
+}));
+
 describe('CLI', () => {
     let mockExit: vi.SpyInstance;
     let mockConsoleError: vi.SpyInstance;
@@ -248,6 +260,7 @@ describe('CLI', () => {
 
             await commandAction(mockFilePath, mockOptions);
 
+            expect(mocks.mockConvert).toHaveBeenCalled();
             expect(mocks.mockGetDraft).toHaveBeenCalledWith('existing_media_id');
             expect(mocks.mockCreateDraft).not.toHaveBeenCalled();
             expect(mocks.mockUpdateDraft).not.toHaveBeenCalled();
@@ -300,7 +313,8 @@ describe('CLI', () => {
 
             await commandAction(mockFilePath, mockOptions);
 
-            expect(mocks.mockFindArticleByPath).toHaveBeenCalledWith(mockFilePath);
+            expect(mocks.mockConvert).toHaveBeenCalled();
+            expect(mocks.mockFindArticleByPath).not.toHaveBeenCalled();
             expect(mocks.mockCreateDraft).not.toHaveBeenCalled();
             expect(mockExit).not.toHaveBeenCalled();
         });
@@ -412,6 +426,55 @@ describe('CLI', () => {
             
             expect(mocks.mockBatchGetPublishedArticles).toHaveBeenCalledTimes(1);
             expect(mocks.mockDeletePublishedArticle).not.toHaveBeenCalled();
+        });
+    });
+
+    describe('delete-drafts command', () => {
+        beforeEach(async () => {
+            commandAction = commandActions['delete-drafts'];
+            if (!commandAction) {
+                throw new Error("Could not find 'delete-drafts' command action.");
+            }
+        });
+
+        it('should delete all drafts interactively', async () => {
+             const responseWithItem = {
+                total_count: 1,
+                item: [{
+                    media_id: 'draft_media_id_1',
+                    content: { news_item: [{ title: 'Draft 1' }] },
+                    update_time: 1670000000,
+                }]
+            };
+
+            // 1. Initial check
+            mocks.mockBatchGetDrafts.mockResolvedValueOnce(responseWithItem);
+            // 2. Loop fetch
+            mocks.mockBatchGetDrafts.mockResolvedValueOnce(responseWithItem);
+            // 3. Second batch empty to end loop
+            mocks.mockBatchGetDrafts.mockResolvedValueOnce({
+                total_count: 0,
+                item: []
+            });
+
+            mocks.mockQuestion.mockImplementation((_query, cb) => cb('y'));
+
+            await commandAction({});
+
+            expect(mocks.mockBatchGetDrafts).toHaveBeenCalledTimes(3);
+            expect(mocks.mockDeleteDraft).toHaveBeenCalledWith('draft_media_id_1');
+        });
+
+        it('should handle no drafts', async () => {
+             mocks.mockBatchGetDrafts.mockResolvedValueOnce({
+                total_count: 0,
+                item: []
+            });
+            
+            await commandAction({});
+            
+            expect(mocks.mockBatchGetDrafts).toHaveBeenCalledTimes(1);
+            expect(mocks.mockDeleteDraft).not.toHaveBeenCalled();
         });
     });
 });

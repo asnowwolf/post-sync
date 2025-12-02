@@ -1,6 +1,7 @@
 import type {Tokens} from 'marked';
 import {marked, Renderer} from 'marked';
 import {WeChatService} from './wechat.service.js';
+import {DbService} from './db.service.js';
 import * as fs from 'fs/promises';
 import * as path from 'path';
 import axios from 'axios';
@@ -8,6 +9,7 @@ import sharp from 'sharp';
 import {FileError} from '../errors.js';
 import {logger} from '../logger.js';
 import * as yaml from 'js-yaml';
+import * as crypto from 'crypto';
 
 // Simplify by removing all highlighting logic for now
 marked.use({
@@ -16,7 +18,7 @@ marked.use({
 });
 
 export class MarkdownService {
-    constructor(private wechatService: WeChatService) {}
+    constructor(private wechatService: WeChatService, private dbService: DbService) {}
 
     private isUrl(s: string): boolean {
         try {
@@ -165,13 +167,31 @@ export class MarkdownService {
             await fs.access(coverImagePath); // Check if the file exists
             logger.info(`Found cover image for '${articlePath}' at '${coverImagePath}'`);
             const coverImageBuffer = await fs.readFile(coverImagePath);
-            // Resize to 1440px width (standard high quality), preserve aspect ratio, high JPEG quality
-            const thumbBuffer = await sharp(coverImageBuffer)
-                .resize({ width: 1440, withoutEnlargement: true })
-                .jpeg({ quality: 90 })
-                .toBuffer();
-            const result = await this.wechatService.addPermanentMaterial(thumbBuffer, 'image', `${baseName}.jpg`, 'image/jpeg');
-            thumb_media_id = result.media_id;
+            
+            // Calculate SHA1 of the original cover image
+            const hash = crypto.createHash('sha1').update(coverImageBuffer).digest('hex');
+            const material = this.dbService.getMaterial(coverImagePath);
+            
+            let needsUpload = true;
+            if (material && material.hash === hash) {
+                const exists = await this.wechatService.checkMediaExists(material.media_id);
+                if (exists) {
+                    needsUpload = false;
+                    thumb_media_id = material.media_id;
+                    logger.info(`Cover image '${baseName}.png' exists on server and content unchanged. Using cached media_id.`);
+                }
+            }
+
+            if (needsUpload) {
+                // Resize to 1440px width (standard high quality), preserve aspect ratio, high JPEG quality
+                const thumbBuffer = await sharp(coverImageBuffer)
+                    .resize({ width: 1440, withoutEnlargement: true })
+                    .jpeg({ quality: 90 })
+                    .toBuffer();
+                const result = await this.wechatService.addPermanentMaterial(thumbBuffer, 'image', `${baseName}.jpg`, 'image/jpeg');
+                thumb_media_id = result.media_id;
+                this.dbService.saveMaterial(coverImagePath, hash, thumb_media_id, result.url);
+            }
         } catch (error: any) {
             logger.warn(`No cover image found for '${articlePath}' at '${coverImagePath}', or failed to process it. A thumbnail will not be set. Error: ${error.message}`);
             // Do not re-throw here, as missing cover image is not a critical error for article creation
@@ -215,10 +235,34 @@ export class MarkdownService {
         for (const token of imageTokens) {
             try {
                 const {buffer, contentType, filename} = await this.getImageBuffer(token.href, articlePath);
-                // Use addPermanentMaterial as requested, although typically article images use uploadImg.
-                // Assuming user wants managed assets. 
-                const result = await this.wechatService.addPermanentMaterial(buffer, 'image', filename, contentType);
-                token.href = result.url;
+                
+                const hash = crypto.createHash('sha1').update(buffer).digest('hex');
+                let localPath = token.href;
+                if (!this.isUrl(token.href)) {
+                    localPath = path.resolve(path.dirname(articlePath), token.href);
+                }
+
+                const material = this.dbService.getMaterial(localPath);
+                let url = material?.url;
+                let needsUpload = true;
+
+                if (material && material.hash === hash && material.media_id) {
+                    const exists = await this.wechatService.checkMediaExists(material.media_id);
+                    if (exists) {
+                        needsUpload = false;
+                        logger.info(`Image '${filename}' exists on server and content unchanged. Using cached URL.`);
+                    }
+                }
+
+                if (needsUpload) {
+                    const result = await this.wechatService.addPermanentMaterial(buffer, 'image', filename, contentType);
+                    url = result.url;
+                    this.dbService.saveMaterial(localPath, hash, result.media_id, url);
+                }
+
+                if (url) {
+                    token.href = url;
+                }
             } catch (error: any) {
                 logger.warn(`Could not upload image '${token.href}', leaving original source. Error: ${error.message}`);
             }

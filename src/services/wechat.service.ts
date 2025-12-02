@@ -3,6 +3,7 @@ import FormData from 'form-data';
 import {Stream} from 'stream';
 import {ApiError} from '../errors.js';
 import {logger} from '../logger.js';
+import { retry } from '../utils/api-retry.util.js';
 
 export interface WeChatServiceOptions {
     appId: string;
@@ -38,73 +39,26 @@ export class WeChatService {
         };
 
         try {
-            const response = await this.http.post(url, data);
+            const response = await retry(async () => {
+                const res = await this.http.post(url, data);
+                if (res.data.errcode) {
+                    throw new ApiError(`WeChat API Error: ${res.data.errmsg}`, res.status, res.data);
+                }
+                return res;
+            });
+
             logger.debug(`getAccessToken response: status=${response.status}, data=${JSON.stringify(response.data)}`);
-            if (response.data.errcode) {
-                throw new ApiError(`WeChat API Error: ${response.data.errmsg}`, response.status, response.data);
-            }
             this.accessToken = response.data.access_token;
             // Set expiry with a 5-minute buffer
             this.tokenExpiresAt = Date.now() + (response.data.expires_in - 300) * 1000;
             logger.info('Successfully obtained new WeChat access token.');
             return this.accessToken!;
         } catch (error: any) {
-            logger.error('Failed to get access token:', error.message);
+            logger.error('Failed to get access token after retries:', error.message);
             if (error.response) {
                 logger.error(`Error response: status=${error.response.status}, data=${JSON.stringify(error.response.data)}`);
             }
             throw new ApiError('Failed to get access token', error.response?.status, error.response?.data);
-        }
-    }
-
-    public async uploadArticleImage(imageBuffer: Buffer, filename: string, contentType: string): Promise<string> {
-        const token = await this.getAccessToken();
-        const url = `${this.options.wechatApiBaseUrl}/cgi-bin/media/uploadimg?access_token=${token}`;
-
-        const form = new FormData();
-        form.append('media', Stream.Readable.from(imageBuffer), {filename, contentType});
-
-        logger.info(`Uploading image '${filename}' to WeChat...`);
-        try {
-            const response = await this.http.post(url, form, {headers: form.getHeaders()});
-            logger.debug(`uploadArticleImage response: status=${response.status}, data=${JSON.stringify(response.data)}`);
-            if (response.data.errcode) {
-                throw new ApiError(`WeChat API Error: ${response.data.errmsg}`, response.status, response.data);
-            }
-            logger.info(`Successfully uploaded image '${filename}'. URL: ${response.data.url}`);
-            return response.data.url;
-        } catch (error: any) {
-            logger.error(`Failed to upload image '${filename}':`, error.message);
-            if (error.response) {
-                logger.error(`Error response: status=${error.response.status}, data=${JSON.stringify(error.response.data)}`);
-            }
-            throw new ApiError(`Failed to upload image`, error.response?.status, error.response?.data);
-        }
-    }
-
-    public async uploadTemporaryMedia(mediaBuffer: Buffer, type: 'image' | 'thumb', filename: string, contentType: string): Promise<string> {
-        const token = await this.getAccessToken();
-        const url = `${this.options.wechatApiBaseUrl}/cgi-bin/media/upload?access_token=${token}&type=${type}`;
-
-        const form = new FormData();
-        form.append('media', Stream.Readable.from(mediaBuffer), {filename, contentType});
-
-        logger.info(`Uploading temporary ${type} '${filename}' to WeChat...`);
-        try {
-            const response = await this.http.post(url, form, {headers: form.getHeaders()});
-            logger.debug(`uploadTemporaryMedia response: status=${response.status}, data=${JSON.stringify(response.data)}`);
-            if (response.data.errcode) {
-                throw new ApiError(`WeChat API Error: ${response.data.errmsg}`, response.status, response.data);
-            }
-            const mediaId = response.data.media_id || response.data.thumb_media_id;
-            logger.info(`Successfully uploaded temporary ${type}. Media ID: ${mediaId}`);
-            return mediaId;
-        } catch (error: any) {
-            logger.error(`Failed to upload temporary ${type}:`, error.message);
-            if (error.response) {
-                logger.error(`Error response: status=${error.response.status}, data=${JSON.stringify(error.response.data)}`);
-            }
-            throw new ApiError(`Failed to upload temporary ${type}`, error.response?.status, error.response?.data);
         }
     }
 
@@ -120,15 +74,19 @@ export class WeChatService {
 
         logger.info(`Uploading permanent ${type} '${filename}' to WeChat...`);
         try {
-            const response = await this.http.post(url, form, {headers: form.getHeaders()});
+            const response = await retry(async () => {
+                const res = await this.http.post(url, form, {headers: form.getHeaders()});
+                if (res.data.errcode) {
+                    throw new ApiError(`WeChat API Error: ${res.data.errmsg}`, res.status, res.data);
+                }
+                return res;
+            });
+
             logger.debug(`addPermanentMaterial response: status=${response.status}, data=${JSON.stringify(response.data)}`);
-            if (response.data.errcode) {
-                throw new ApiError(`WeChat API Error: ${response.data.errmsg}`, response.status, response.data);
-            }
             logger.info(`Successfully uploaded permanent ${type}. Media ID: ${response.data.media_id}`);
             return {media_id: response.data.media_id, url: response.data.url};
         } catch (error: any) {
-            logger.error(`Failed to upload permanent ${type}:`, error.message);
+            logger.error(`Failed to upload permanent ${type} after retries:`, error.message);
             if (error.response) {
                 logger.error(`Error response: status=${error.response.status}, data=${JSON.stringify(error.response.data)}`);
             }
@@ -156,15 +114,19 @@ export class WeChatService {
 
         logger.info(`Creating draft '${article.title}'...`);
         try {
-            const response = await this.http.post(url, data);
+            const response = await retry(async () => {
+                const res = await this.http.post(url, data);
+                if (res.data.errcode) {
+                    throw new ApiError(`WeChat API Error: ${res.data.errmsg}`, res.status, res.data);
+                }
+                return res;
+            });
+
             logger.debug(`createDraft response: status=${response.status}, data=${JSON.stringify(response.data)}`);
-            if (response.data.errcode) {
-                throw new ApiError(`WeChat API Error: ${response.data.errmsg}`, response.status, response.data);
-            }
             logger.info(`Successfully created draft. Media ID: ${response.data.media_id}`);
             return response.data.media_id;
         } catch (error: any) {
-            logger.error(`Failed to create draft:`, error.message);
+            logger.error(`Failed to create draft after retries:`, error.message);
             if (error.response) {
                 logger.error(`Error response: status=${error.response.status}, data=${JSON.stringify(error.response.data)}`);
             }
@@ -179,14 +141,18 @@ export class WeChatService {
 
         logger.info(`Publishing draft with media_id '${mediaId}'...`);
         try {
-            const response = await this.http.post(url, data);
-            if (response.data.errcode) {
-                throw new ApiError(`WeChat API Error: ${response.data.errmsg}`, response.status, response.data);
-            }
+            const response = await retry(async () => {
+                const res = await this.http.post(url, data);
+                if (res.data.errcode) {
+                    throw new ApiError(`WeChat API Error: ${res.data.errmsg}`, res.status, res.data);
+                }
+                return res;
+            });
+
             logger.info(`Successfully submitted for publication. Publish ID: ${response.data.publish_id}`);
             return response.data.publish_id;
         } catch (error: any) {
-            logger.error(`Failed to publish draft:`, error.message);
+            logger.error(`Failed to publish draft after retries:`, error.message);
             throw new ApiError('Failed to publish draft', error.response?.status, error.response?.data);
         }
     }
@@ -198,14 +164,18 @@ export class WeChatService {
 
         logger.info(`Checking publish status for publish_id '${publishId}'...`);
         try {
-            const response = await this.http.get(url, {params});
-            if (response.data.errcode) {
-                throw new ApiError(`WeChat API Error: ${response.data.errmsg}`, response.status, response.data);
-            }
+            const response = await retry(async () => {
+                const res = await this.http.get(url, {params});
+                if (res.data.errcode) {
+                    throw new ApiError(`WeChat API Error: ${res.data.errmsg}`, res.status, res.data);
+                }
+                return res;
+            });
+
             logger.info(`Publish status: ${response.data.publish_status === 0 ? 'Success' : 'In Progress/Failed'}`);
             return response.data;
         } catch (error: any) {
-            logger.error(`Failed to get publish status:`, error.message);
+            logger.error(`Failed to get publish status after retries:`, error.message);
             throw new ApiError('Failed to get publish status', error.response?.status, error.response?.data);
         }
     }
@@ -217,16 +187,25 @@ export class WeChatService {
 
         logger.debug(`Checking existence of draft '${mediaId}'...`);
         try {
-            const response = await this.http.post(url, data);
-            if (response.data.errcode) {
-                if (response.data.errcode === 40007) { // Invalid media_id
-                    return null;
+            const response = await retry(async () => {
+                const res = await this.http.post(url, data);
+                if (res.data.errcode) {
+                    if (res.data.errcode === 40007) { // Invalid media_id - NOT RETRYABLE
+                        return null; // Return null directly without throwing ApiError for retry condition
+                    }
+                    throw new ApiError(`WeChat API Error: ${res.data.errmsg}`, res.status, res.data);
                 }
-                throw new ApiError(`WeChat API Error: ${response.data.errmsg}`, response.status, response.data);
-            }
-            return response.data;
+                return res;
+            }, {
+                retryCondition: (error) => {
+                    // Only retry for "请勿频繁请求" error, not for other API errors or 40007
+                    return error.message.includes('请勿频繁请求');
+                }
+            });
+
+            return response; // Can be null if errcode 40007 was returned
         } catch (error: any) {
-            logger.error(`Failed to get draft:`, error.message);
+            logger.error(`Failed to get draft after retries:`, error.message);
             throw new ApiError('Failed to get draft', error.response?.status, error.response?.data);
         }
     }

@@ -191,9 +191,9 @@ describe('End-to-End Test for post-sync CLI (Full Verification)', () => {
             // Expect 2 calls for createDraft (for two articles)
             const createDraftCalls = _mockApiRequests.filter(req => req.path.includes('/cgi-bin/draft/add'));
             expect(createDraftCalls).toHaveLength(2);
-            expect(createDraftCalls[0].body.articles[0].title).toEqual('清虚山上的数据流');
+            expect(createDraftCalls[0].body.articles[0].title).toEqual('0010-清虚山上的数据流');
             expect(createDraftCalls[0].body.articles[0].thumb_media_id).toEqual('mock_perm_media_id');
-            expect(createDraftCalls[1].body.articles[0].title).toEqual('清玄道人的终极指令');
+            expect(createDraftCalls[1].body.articles[0].title).toEqual('0020-清玄道人的终极指令');
             expect(createDraftCalls[1].body.articles[0].thumb_media_id).toEqual('mock_perm_media_id');
 
         } catch (error: any) {
@@ -273,9 +273,9 @@ describe('End-to-End Test for post-sync CLI (Full Verification)', () => {
             // Expect 2 calls for createDraft
             const createDraftCalls = _mockApiRequests.filter(req => req.path.includes('/cgi-bin/draft/add'));
             expect(createDraftCalls).toHaveLength(2);
-            expect(createDraftCalls[0].body.articles[0].title).toEqual('清虚山上的数据流');
+            expect(createDraftCalls[0].body.articles[0].title).toEqual('0010-清虚山上的数据流');
             expect(createDraftCalls[0].body.articles[0].thumb_media_id).toEqual('mock_perm_media_id');
-            expect(createDraftCalls[1].body.articles[0].title).toEqual('清玄道人的终极指令');
+            expect(createDraftCalls[1].body.articles[0].title).toEqual('0020-清玄道人的终极指令');
             expect(createDraftCalls[1].body.articles[0].thumb_media_id).toEqual('mock_perm_media_id');
 
 

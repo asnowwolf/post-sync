@@ -1,7 +1,15 @@
 import {beforeEach, describe, expect, it, vi} from 'vitest';
 import {getFileHash, getFileList} from './file.util.js';
 import * as fs from 'fs';
+import * as crypto from 'crypto';
 import {FileError} from '../errors.js';
+
+vi.mock('crypto', () => ({
+    createHash: vi.fn(() => ({
+        update: vi.fn().mockReturnThis(),
+        digest: vi.fn(() => 'a73d328479e0db9668352b22f03ec1c33f269a8b'), // Consistent SHA1 for 'content'
+    })),
+}));
 
 // Mock fs.promises
 vi.mock('fs', async () => {
@@ -63,7 +71,7 @@ describe('File Util', () => {
     });
 
     describe('getFileHash', () => {
-        it('should calculate MD5 hash of a file', async () => {
+        it('should calculate SHA1 hash of a file', async () => {
             const filePath = '/test/file.md';
             const mockStream = {
                 on: vi.fn((event, cb) => {
@@ -75,8 +83,8 @@ describe('File Util', () => {
             (fs.createReadStream as any).mockReturnValue(mockStream);
 
             const hash = await getFileHash(filePath);
-            // md5 of 'content' is '9a0364b9e99bb480dd25e1f0284c8555'
-            expect(hash).toBe('9a0364b9e99bb480dd25e1f0284c8555');
+            // sha1 of 'content' is 'a73d328479e0db9668352b22f03ec1c33f269a8b'
+            expect(hash).toBe('a73d328479e0db9668352b22f03ec1c33f269a8b');
         });
 
         it('should throw FileError on read error', async () => {

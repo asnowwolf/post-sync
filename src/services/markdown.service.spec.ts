@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { MarkdownService } from './markdown.service.js';
 import { WeChatService } from './wechat.service.js';
+import { DbService } from './db.service.js'; // Import DbService
 import axios from 'axios';
 import sharp from 'sharp';
 import { marked } from 'marked';
@@ -87,10 +88,15 @@ vi.mock('marked', () => ({
 
 // Mock WeChatService
 const mockWeChatService = {
-    uploadArticleImage: vi.fn(),
-    uploadTemporaryMedia: vi.fn(),
     addPermanentMaterial: vi.fn(),
+    checkMediaExists: vi.fn(), // Add mock for checkMediaExists
 } as unknown as WeChatService;
+
+// Mock DbService
+const mockDbService = {
+    getMaterial: vi.fn(),
+    saveMaterial: vi.fn(),
+} as unknown as DbService;
 
 let mockSharpInstance: any;
 
@@ -106,12 +112,14 @@ describe('MarkdownService', () => {
             toBuffer: vi.fn().mockResolvedValue(Buffer.from('processed-image-buffer')),
             metadata: vi.fn().mockResolvedValue({ format: 'jpeg' }), 
         };
-        markdownService = new MarkdownService(mockWeChatService);
+        // Pass mockDbService to MarkdownService
+        markdownService = new MarkdownService(mockWeChatService, mockDbService);
         (sharp as unknown as ReturnType<typeof vi.fn>).mockReturnValue(mockSharpInstance);
 
         vi.mocked(fs.access).mockRejectedValue(new Error('File not found')); 
         vi.mocked(fs.readFile).mockResolvedValue(createMockImageBuffer('png')); 
         vi.mocked(fileUtil.getFileHash).mockResolvedValue('mock_hash');
+        mockWeChatService.checkMediaExists.mockResolvedValue(true); // Default to media existing on server
     });
 
     it('should extract digest from frontmatter', async () => {
@@ -179,9 +187,18 @@ Content`;
         const markdown = '# Title\n![cover](./article-four.png)\nSome other content.\n![body-image](./body.png)';
         
         vi.mocked(fs.access).mockResolvedValue(undefined); 
-        // Mock readFile to return buffer
-        vi.mocked(fs.readFile).mockResolvedValue(createMockImageBuffer('png'));
+        vi.mocked(fs.readFile).mockImplementation((p: string) => {
+            if (p.includes('article-four.png')) return Promise.resolve(createMockImageBuffer('png'));
+            if (p.includes('body.png')) return Promise.resolve(createMockImageBuffer('png'));
+            return Promise.reject(new Error('File not found'));
+        });
         
+        // Mock getMaterial to return undefined (no cached material)
+        mockDbService.getMaterial.mockReturnValue(undefined);
+
+        // Mock checkMediaExists to return false (even if there was a media_id, it doesn't exist on server)
+        mockWeChatService.checkMediaExists.mockResolvedValue(false);
+
         // Mock addPermanentMaterial to return different values based on call
         mockWeChatService.addPermanentMaterial = vi.fn()
             .mockResolvedValueOnce({ media_id: 'cover_media_id', url: 'cover_url' }) // 1st call: Cover image
@@ -198,8 +215,19 @@ Content`;
         // Verify body image replacement
         expect(html).toContain('<img src="body_image_url"');
         expect(mockWeChatService.addPermanentMaterial).toHaveBeenCalledTimes(2);
-        // Ensure uploadArticleImage is NOT called
-        expect(mockWeChatService.uploadArticleImage).not.toHaveBeenCalled();
+        expect(mockDbService.saveMaterial).toHaveBeenCalledTimes(2);
+        expect(mockDbService.saveMaterial).toHaveBeenCalledWith(
+            expect.stringContaining('article-four.png'),
+            expect.any(String), // SHA1 hash
+            'cover_media_id',
+            'cover_url'
+        );
+        expect(mockDbService.saveMaterial).toHaveBeenCalledWith(
+            expect.stringContaining('body.png'),
+            expect.any(String), // SHA1 hash
+            'body_media_id',
+            'body_image_url'
+        );
     });
 
     it('should return null thumb_media_id if cover image upload fails', async () => {
@@ -208,11 +236,18 @@ Content`;
         
         vi.mocked(fs.access).mockResolvedValue(undefined); 
         vi.mocked(fs.readFile).mockResolvedValueOnce(createMockImageBuffer('png'));
+        
+        // Mock getMaterial to return undefined (no cached material)
+        mockDbService.getMaterial.mockReturnValue(undefined);
+        // Mock checkMediaExists to return false
+        mockWeChatService.checkMediaExists.mockResolvedValue(false);
+
         mockWeChatService.addPermanentMaterial = vi.fn().mockRejectedValue(new Error('Upload failed'));
 
         const { thumb_media_id, html } = await markdownService.convert(markdown, articlePath);
 
         expect(thumb_media_id).toBeNull();
         expect(html).not.toContain('<h1>Title</h1>');
+        expect(mockDbService.saveMaterial).not.toHaveBeenCalled();
     });
 });

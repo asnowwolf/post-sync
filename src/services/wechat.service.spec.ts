@@ -58,40 +58,6 @@ describe('WeChatService', () => {
         expect(cachedToken).toBe('valid_token');
     });
 
-    it('should upload temporary media', async () => {
-        const mediaBuffer = Buffer.from('media content');
-        mockPost.mockResolvedValueOnce({
-            data: { media_id: 'uploaded_media_id' },
-            status: 200,
-        });
-
-        const mediaId = await wechatService.uploadTemporaryMedia(mediaBuffer, 'image', 'test.jpg', 'image/jpeg');
-
-        expect(mockPost).toHaveBeenCalledWith(
-            `${mockConfig.wechatApiBaseUrl}/cgi-bin/media/upload?access_token=valid_token&type=image`,
-            expect.any(Object), // FormData
-            expect.any(Object)  // Headers
-        );
-        expect(mediaId).toBe('uploaded_media_id');
-    });
-
-    it('should upload article image', async () => {
-        const imageBuffer = Buffer.from('image content');
-        mockPost.mockResolvedValueOnce({
-            data: { url: 'http://wechat.url/image.jpg' },
-            status: 200,
-        });
-
-        const url = await wechatService.uploadArticleImage(imageBuffer, 'test.jpg', 'image/jpeg');
-
-        expect(mockPost).toHaveBeenCalledWith(
-            `${mockConfig.wechatApiBaseUrl}/cgi-bin/media/uploadimg?access_token=valid_token`,
-            expect.any(Object),
-            expect.any(Object)
-        );
-        expect(url).toBe('http://wechat.url/image.jpg');
-    });
-
     it('should create draft', async () => {
         const article = {
             title: 'Test Article',
@@ -158,7 +124,7 @@ describe('WeChatService', () => {
             status: 200,
         });
 
-        await expect(wechatService.uploadTemporaryMedia(Buffer.from(''), 'image', 't.jpg', 'image/jpeg'))
+        await expect(wechatService.addPermanentMaterial(Buffer.from(''), 'image', 't.jpg', 'image/jpeg'))
             .rejects.toThrow(ApiError);
     });
 });

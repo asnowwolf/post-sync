@@ -43,10 +43,11 @@ describe('DbService', () => {
         expect(mockExec).toHaveBeenCalledWith(expect.stringContaining('CREATE TABLE IF NOT EXISTS articles'));
         expect(mockExec).toHaveBeenCalledWith(expect.stringContaining('CREATE TABLE IF NOT EXISTS drafts'));
         expect(mockExec).toHaveBeenCalledWith(expect.stringContaining('CREATE TABLE IF NOT EXISTS publications'));
+        expect(mockExec).toHaveBeenCalledWith(expect.stringContaining('CREATE TABLE IF NOT EXISTS materials'));
     });
 
     it('should find an article by path', () => {
-        const expectedArticle = { id: 1, source_hash: 'hash123' };
+        const expectedArticle = { id: 1, source_hash: '0123456789abcdef0123456789abcdef01234567' }; // SHA1 hash
         mockGet.mockReturnValue(expectedArticle);
 
         const article = dbService.findArticleByPath('/absolute/path/to/article.md');
@@ -58,7 +59,7 @@ describe('DbService', () => {
 
     it('should insert a new article', () => {
         const filePath = '/absolute/path/to/new-article.md';
-        const hash = 'newhash456';
+        const hash = 'fedcba9876543210fedcba9876543210fedcba98'; // SHA1 hash
 
         dbService.insertArticle(filePath, hash);
 
@@ -68,7 +69,7 @@ describe('DbService', () => {
 
     it('should update an article hash', () => {
         const id = 1;
-        const hash = 'updatedhash789';
+        const hash = 'abcdef0123456789abcdef0123456789abcdef01'; // SHA1 hash
 
         dbService.updateArticleHash(id, hash);
 
@@ -128,5 +129,28 @@ describe('DbService', () => {
         expect(mockPrepare).toHaveBeenCalledWith(expect.stringContaining('SELECT 1 FROM drafts d JOIN publications p ON d.id = p.draft_id WHERE d.article_id = ? LIMIT 1'));
         expect(mockGet).toHaveBeenCalledWith(1);
         expect(isPublished).toBe(false);
+    });
+
+    it('should get a material by local path', () => {
+        const expectedMaterial = { id: 1, hash: 'some_sha1_hash_for_material', media_id: 'material_media_id', url: 'http://material.url/image.jpg' };
+        mockGet.mockReturnValue(expectedMaterial);
+
+        const material = dbService.getMaterial('/path/to/material.jpg');
+
+        expect(mockPrepare).toHaveBeenCalledWith('SELECT id, hash, media_id, url FROM materials WHERE local_path = ?');
+        expect(mockGet).toHaveBeenCalledWith('/path/to/material.jpg');
+        expect(material).toEqual(expectedMaterial);
+    });
+
+    it('should save a new material and update on conflict', () => {
+        const localPath = '/path/to/new-material.png';
+        const hash = 'new_material_sha1_hash';
+        const mediaId = 'new_material_media_id';
+        const url = 'http://new-material.url/image.png';
+
+        dbService.saveMaterial(localPath, hash, mediaId, url);
+
+        expect(mockPrepare).toHaveBeenCalledWith(expect.stringContaining('INSERT INTO materials (local_path, hash, media_id, url, updated_at)'));
+        expect(mockRun).toHaveBeenCalledWith(localPath, hash, mediaId, url, expect.any(String));
     });
 });

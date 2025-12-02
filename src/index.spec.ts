@@ -1,13 +1,16 @@
 import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
 import * as path from 'path';
 
+// Define a common SHA1 constant
+const TEST_SHA1_HASH = 'test_sha1_hash_abcdef0123456789abcdef0123';
+
 // Hoist all mocks to ensure they are available in vi.mock factories
 const mocks = vi.hoisted(() => {
     return {
         // file.util
         getPostSyncWorkDir: vi.fn(() => '/mock/home/.post-sync'),
         readJsonFile: vi.fn(), // Will be implemented in mock factory or beforeEach
-        getFileHash: vi.fn(() => 'mock_hash'),
+        getFileHash: vi.fn(() => TEST_SHA1_HASH), // Use constant here
         getFileList: vi.fn(() => ['/mock/path/article.md']),
 
         // DbService
@@ -27,7 +30,14 @@ const mocks = vi.hoisted(() => {
         mockUpdateDraft: vi.fn(),
 
         // MarkdownService
-        mockConvert: vi.fn().mockResolvedValue({ html: 'mock html', thumb_media_id: 'mock_thumb_id' }),
+        mockConvert: vi.fn().mockImplementation((_wechatService: any, _dbService: any, _author?: string, _digest?: string) => {
+            return {
+                html: 'mock html',
+                thumb_media_id: 'mock_thumb_id',
+                digest: _digest === undefined ? undefined : _digest, // Reflect new digest logic
+                author: _author === undefined ? undefined : _author, // Reflect new author logic
+            };
+        }),
 
         // Commander
         mockName: vi.fn().mockReturnThis(),
@@ -106,7 +116,7 @@ vi.mock('./services/wechat.service.js', () => {
 // 4. Mock MarkdownService
 vi.mock('./services/markdown.service.js', () => {
     return {
-        MarkdownService: vi.fn().mockImplementation(function() {
+        MarkdownService: vi.fn().mockImplementation(function(_wechatService: any, _dbService: any) {
             return {
                 convert: mocks.mockConvert,
             };
@@ -213,16 +223,18 @@ describe('CLI', () => {
             await commandAction(mockFilePath, mockOptions);
 
             expect(mocks.mockFindArticleByPath).toHaveBeenCalledWith(mockFilePath);
-            expect(mocks.mockInsertArticle).toHaveBeenCalledWith(mockFilePath, 'mock_hash');
+            expect(mocks.mockInsertArticle).toHaveBeenCalledWith(mockFilePath, TEST_SHA1_HASH);
             expect(mocks.mockInsertDraft).toHaveBeenCalledWith(1, 'mock_media_id');
-            expect(mocks.mockCreateDraft).toHaveBeenCalled();
+            expect(mocks.mockCreateDraft).toHaveBeenCalledWith(expect.objectContaining({
+                title: 'article',
+            }));
             expect(mockExit).not.toHaveBeenCalled();
         });
 
         it('should skip if article is unchanged and draft exists on server', async () => {
-            mocks.mockFindArticleByPath.mockReturnValueOnce({ id: 1, source_hash: 'mock_hash' });
-            mocks.mockFindLatestDraftByArticleId.mockReturnValueOnce({ id: 1, media_id: 'existing_media_id' });
-            mocks.mockGetDraft.mockResolvedValueOnce({ news_item: [] }); // Exists
+            mocks.mockFindArticleByPath.mockReturnValueOnce({ id: 1, source_hash: TEST_SHA1_HASH }); // Content unchanged
+            mocks.mockFindLatestDraftByArticleId.mockReturnValueOnce({ id: 1, media_id: 'existing_media_id' }); // Draft exists in DB
+            mocks.mockGetDraft.mockResolvedValueOnce({ news_item: [] }); // Draft exists on server
 
             await commandAction(mockFilePath, mockOptions);
 
@@ -232,47 +244,49 @@ describe('CLI', () => {
         });
 
         it('should update draft if article changed and draft exists on server', async () => {
-            mocks.mockFindArticleByPath.mockReturnValueOnce({ id: 1, source_hash: 'old_hash' });
-            mocks.mockFindLatestDraftByArticleId.mockReturnValueOnce({ id: 1, media_id: 'existing_media_id' });
-            mocks.mockGetDraft.mockResolvedValueOnce({ news_item: [] }); // Exists
+            mocks.mockFindArticleByPath.mockReturnValueOnce({ id: 1, source_hash: 'different_sha1_hash' }); // Content changed
+            mocks.mockFindLatestDraftByArticleId.mockReturnValueOnce({ id: 1, media_id: 'existing_media_id' }); // Draft exists in DB
+            mocks.mockGetDraft.mockResolvedValueOnce({ news_item: [] }); // Draft exists on server
 
             await commandAction(mockFilePath, mockOptions);
 
             expect(mocks.mockGetDraft).toHaveBeenCalledWith('existing_media_id');
             expect(mocks.mockUpdateDraft).toHaveBeenCalledWith('existing_media_id', expect.objectContaining({
-                title: 'Mock Title',
+                title: 'article',
                 content: 'mock html'
             }));
-            expect(mocks.mockUpdateArticleHash).toHaveBeenCalledWith(1, 'mock_hash');
+            expect(mocks.mockUpdateArticleHash).toHaveBeenCalledWith(1, TEST_SHA1_HASH);
             expect(mocks.mockCreateDraft).not.toHaveBeenCalled();
         });
 
         it('should re-create draft if article unchanged but draft missing on server', async () => {
-            mocks.mockFindArticleByPath.mockReturnValueOnce({ id: 1, source_hash: 'mock_hash' });
-            mocks.mockFindLatestDraftByArticleId.mockReturnValueOnce({ id: 1, media_id: 'existing_media_id' });
-            mocks.mockGetDraft.mockResolvedValueOnce(null); // Missing
+            mocks.mockFindArticleByPath.mockReturnValueOnce({ id: 1, source_hash: TEST_SHA1_HASH }); // Content unchanged
+            mocks.mockFindLatestDraftByArticleId.mockReturnValueOnce({ id: 1, media_id: 'existing_media_id' }); // Draft exists in DB
+            mocks.mockGetDraft.mockResolvedValueOnce(null); // Draft missing on server
 
             await commandAction(mockFilePath, mockOptions);
 
             expect(mocks.mockGetDraft).toHaveBeenCalledWith('existing_media_id');
             expect(mocks.mockCreateDraft).toHaveBeenCalled();
-            expect(mocks.mockInsertDraft).toHaveBeenCalled();
+            expect(mocks.mockInsertDraft).toHaveBeenCalledWith(1, 'mock_media_id');
+            expect(mocks.mockUpdateArticleHash).toHaveBeenCalledWith(1, TEST_SHA1_HASH);
         });
         
          it('should re-create draft if article changed but draft missing on server', async () => {
-            mocks.mockFindArticleByPath.mockReturnValueOnce({ id: 1, source_hash: 'old_hash' });
-            mocks.mockFindLatestDraftByArticleId.mockReturnValueOnce({ id: 1, media_id: 'existing_media_id' });
-            mocks.mockGetDraft.mockResolvedValueOnce(null); // Missing
+            mocks.mockFindArticleByPath.mockReturnValueOnce({ id: 1, source_hash: 'different_sha1_hash' }); // Content changed
+            mocks.mockFindLatestDraftByArticleId.mockReturnValueOnce({ id: 1, media_id: 'existing_media_id' }); // Draft exists in DB
+            mocks.mockGetDraft.mockResolvedValueOnce(null); // Draft missing on server
 
             await commandAction(mockFilePath, mockOptions);
 
             expect(mocks.mockGetDraft).toHaveBeenCalledWith('existing_media_id');
             expect(mocks.mockCreateDraft).toHaveBeenCalled();
-            expect(mocks.mockInsertDraft).toHaveBeenCalled();
+            expect(mocks.mockInsertDraft).toHaveBeenCalledWith(1, 'mock_media_id');
+            expect(mocks.mockUpdateArticleHash).toHaveBeenCalledWith(1, TEST_SHA1_HASH);
         });
 
         it('should skip draft creation if thumbnail generation fails', async () => {
-            mocks.mockConvert.mockResolvedValueOnce({ html: 'mock html', thumb_media_id: null });
+            mocks.mockConvert.mockResolvedValueOnce({ html: 'mock html', thumb_media_id: null }); // Force thumbnail failure
 
             await commandAction(mockFilePath, mockOptions);
 

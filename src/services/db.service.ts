@@ -51,6 +51,15 @@ export class DbService {
                     finished_at TEXT,
                     FOREIGN KEY (draft_id) REFERENCES drafts (id)
                 );
+
+                CREATE TABLE IF NOT EXISTS materials (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    local_path TEXT UNIQUE NOT NULL,
+                    hash TEXT NOT NULL,
+                    media_id TEXT NOT NULL,
+                    url TEXT,
+                    updated_at TEXT NOT NULL
+                );
             `;
             this.db.exec(createTablesStm);
             logger.info('Database schema initialized successfully.');
@@ -113,5 +122,24 @@ export class DbService {
             'SELECT 1 FROM drafts d JOIN publications p ON d.id = p.draft_id WHERE d.article_id = ? LIMIT 1'
         );
         return !!stm.get(articleId);
+    }
+
+    public getMaterial(localPath: string): { id: number; hash: string; media_id: string; url: string } | undefined {
+        const stm = this.db.prepare('SELECT id, hash, media_id, url FROM materials WHERE local_path = ?');
+        return stm.get(localPath) as { id: number; hash: string; media_id: string; url: string } | undefined;
+    }
+
+    public saveMaterial(localPath: string, hash: string, mediaId: string, url: string): Database.RunResult {
+        const stm = this.db.prepare(`
+            INSERT INTO materials (local_path, hash, media_id, url, updated_at)
+            VALUES (?, ?, ?, ?, ?)
+            ON CONFLICT(local_path) DO UPDATE SET
+            hash = excluded.hash,
+            media_id = excluded.media_id,
+            url = excluded.url,
+            updated_at = excluded.updated_at
+        `);
+        const now = new Date().toISOString();
+        return stm.run(localPath, hash, mediaId, url, now);
     }
 }

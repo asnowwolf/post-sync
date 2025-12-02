@@ -53,7 +53,7 @@ program
                 wechatApiBaseUrl: currentConfig.wechatApiBaseUrl,
             });
             logger.debug("WeChatService initialized.");
-            const markdownService = new MarkdownService(wechatService);
+            const markdownService = new MarkdownService(wechatService, dbService);
             logger.debug("MarkdownService initialized.");
 
             const resolvedPath = path.resolve(process.cwd(), rawPath);
@@ -89,8 +89,6 @@ program
                         // Draft exists on server
                         if (articleEntry && articleEntry.source_hash === hash) {
                              // Content matches and draft exists.
-                             // We can generally skip, unless we want to force update.
-                             // For now, we skip to avoid unnecessary API calls/uploads.
                              action = 'SKIP';
                         } else {
                             // Content changed, draft exists -> Update
@@ -98,6 +96,7 @@ program
                         }
                     }
                 }
+
 
                 if (action === 'SKIP') {
                     logger.info(`Skipping '${file}' (content unchanged and draft exists).`);
@@ -114,9 +113,7 @@ program
                     continue;
                 }
 
-                const titleMatch = markdownContent.match(/^#\s+(.*)/m);
-                const title = titleMatch ? titleMatch[1] : 'Untitled';
-
+                const title = path.basename(file, '.md');
                 if (action === 'UPDATE' && draftEntry) {
                      await wechatService.updateDraft(draftEntry.media_id, {
                         title,
@@ -235,7 +232,7 @@ program
                 appSecret: currentConfig.appSecret,
                 wechatApiBaseUrl: currentConfig.wechatApiBaseUrl,
             });
-            const markdownService = new MarkdownService(wechatService);
+            const markdownService = new MarkdownService(wechatService, dbService);
 
             const resolvedPath = path.resolve(process.cwd(), rawPath);
             const files = await getFileList(resolvedPath);
@@ -286,9 +283,7 @@ program
                         continue;
                     }
 
-                    const titleMatch = markdownContent.match(/^#\s+(.*)/m);
-                    const title = titleMatch ? titleMatch[1] : 'Untitled';
-                    
+                    const title = path.basename(file, '.md');                    
                     if (action === 'UPDATE' && draftEntry) {
                          await wechatService.updateDraft(draftEntry.media_id, {
                             title,

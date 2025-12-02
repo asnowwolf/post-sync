@@ -5,16 +5,19 @@ export interface ProfileConfig {
     id: string;
     appId: string;
     appSecret: string;
+    author?: string;
 }
 
 export interface AppConfig {
     wechatApiBaseUrl: string;
+    author?: string; // Global default author
     profiles: ProfileConfig[];
 }
 
 // Internal representation of the loaded config file
 interface LoadedConfigFile {
     wechatApiBaseUrl?: string;
+    author?: string; // Global default author
     profiles?: ProfileConfig[];
 }
 
@@ -32,6 +35,7 @@ async function initializeConfig() {
 
         appConfig = {
             wechatApiBaseUrl: process.env.WECHAT_API_BASE_URL || loadedConfigFile.wechatApiBaseUrl || 'https://proxy-wechat.zhizuo.biz',
+            author: loadedConfigFile.author, // Load global author
             profiles: loadedConfigFile.profiles,
         };
 
@@ -44,7 +48,7 @@ async function initializeConfig() {
 // Immediately initialize the configuration when the module is loaded
 await initializeConfig();
 
-export function getConfig(profileId?: string): { appId: string; appSecret: string; wechatApiBaseUrl: string } {
+export function getConfig(profileId?: string): { appId: string; appSecret: string; wechatApiBaseUrl: string; author?: string } {
     const selectedProfile = profileId
         ? appConfig.profiles.find(p => p.id === profileId)
         : appConfig.profiles[0]; // Default to the first profile if no ID is provided
@@ -63,5 +67,6 @@ export function getConfig(profileId?: string): { appId: string; appSecret: strin
         appId: selectedProfile.appId,
         appSecret: selectedProfile.appSecret,
         wechatApiBaseUrl: appConfig.wechatApiBaseUrl,
+        author: selectedProfile.author || appConfig.author, // Profile author overrides global
     };
 }

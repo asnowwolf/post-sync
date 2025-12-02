@@ -30,6 +30,7 @@ describe('Config Service', () => {
         // Set default mock config content for most tests
         vi.mocked(fileUtil.readJsonFile).mockResolvedValue({
             wechatApiBaseUrl: 'https://proxy-wechat.zhizuo.biz',
+            author: 'Global Author', // Add global author
             profiles: [
                 {
                     id: 'default',
@@ -40,6 +41,12 @@ describe('Config Service', () => {
                     id: 'tech_blog',
                     appId: 'tech_blog_app_id',
                     appSecret: 'tech_blog_app_secret',
+                    author: 'Tech Blog Author', // Add profile-specific author
+                },
+                {
+                    id: 'no_author',
+                    appId: 'no_author_app_id',
+                    appSecret: 'no_author_app_secret',
                 },
             ],
         });
@@ -187,5 +194,33 @@ describe('Config Service', () => {
         const config = getConfig();
         expect(config.wechatApiBaseUrl).toBe('http://config-file-proxy.com');
         expect(mockExit).not.toHaveBeenCalled();
+    });
+
+    it('should return global author if no profile-specific author is provided', async () => {
+        const { getConfig } = await import('./config.ts');
+        const config = getConfig('no_author');
+        expect(config.author).toBe('Global Author');
+    });
+
+    it('should return profile-specific author if provided (overriding global)', async () => {
+        const { getConfig } = await import('./config.ts');
+        const config = getConfig('tech_blog');
+        expect(config.author).toBe('Tech Blog Author');
+    });
+
+    it('should return undefined author if neither global nor profile-specific author is provided', async () => {
+        vi.mocked(fileUtil.readJsonFile).mockResolvedValueOnce({
+            wechatApiBaseUrl: 'https://proxy-wechat.zhizuo.biz',
+            profiles: [
+                {
+                    id: 'no_author_at_all',
+                    appId: 'no_author_app_id',
+                    appSecret: 'no_author_app_secret',
+                },
+            ],
+        });
+        const { getConfig } = await import('./config.ts');
+        const config = getConfig('no_author_at_all');
+        expect(config.author).toBeUndefined();
     });
 });

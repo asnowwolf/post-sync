@@ -23,6 +23,8 @@ const mocks = vi.hoisted(() => {
         // WeChatService
         mockCreateDraft: vi.fn().mockResolvedValue('mock_media_id'),
         mockPublishDraft: vi.fn().mockResolvedValue('mock_publish_id'),
+        mockGetDraft: vi.fn(),
+        mockUpdateDraft: vi.fn(),
 
         // MarkdownService
         mockConvert: vi.fn().mockResolvedValue({ html: 'mock html', thumb_media_id: 'mock_thumb_id' }),
@@ -94,6 +96,8 @@ vi.mock('./services/wechat.service.js', () => {
             return {
                 createDraft: mocks.mockCreateDraft,
                 publishDraft: mocks.mockPublishDraft,
+                getDraft: mocks.mockGetDraft,
+                updateDraft: mocks.mockUpdateDraft,
             };
         }),
     };
@@ -215,67 +219,65 @@ describe('CLI', () => {
             expect(mockExit).not.toHaveBeenCalled();
         });
 
-        it('should update article hash and create new draft if content changed', async () => {
+        it('should skip if article is unchanged and draft exists on server', async () => {
+            mocks.mockFindArticleByPath.mockReturnValueOnce({ id: 1, source_hash: 'mock_hash' });
+            mocks.mockFindLatestDraftByArticleId.mockReturnValueOnce({ id: 1, media_id: 'existing_media_id' });
+            mocks.mockGetDraft.mockResolvedValueOnce({ news_item: [] }); // Exists
+
+            await commandAction(mockFilePath, mockOptions);
+
+            expect(mocks.mockGetDraft).toHaveBeenCalledWith('existing_media_id');
+            expect(mocks.mockCreateDraft).not.toHaveBeenCalled();
+            expect(mocks.mockUpdateDraft).not.toHaveBeenCalled();
+        });
+
+        it('should update draft if article changed and draft exists on server', async () => {
             mocks.mockFindArticleByPath.mockReturnValueOnce({ id: 1, source_hash: 'old_hash' });
+            mocks.mockFindLatestDraftByArticleId.mockReturnValueOnce({ id: 1, media_id: 'existing_media_id' });
+            mocks.mockGetDraft.mockResolvedValueOnce({ news_item: [] }); // Exists
 
             await commandAction(mockFilePath, mockOptions);
 
-            expect(mocks.mockFindArticleByPath).toHaveBeenCalledWith(mockFilePath);
+            expect(mocks.mockGetDraft).toHaveBeenCalledWith('existing_media_id');
+            expect(mocks.mockUpdateDraft).toHaveBeenCalledWith('existing_media_id', expect.objectContaining({
+                title: 'Mock Title',
+                content: 'mock html'
+            }));
             expect(mocks.mockUpdateArticleHash).toHaveBeenCalledWith(1, 'mock_hash');
-            expect(mocks.mockInsertDraft).toHaveBeenCalledWith(1, 'mock_media_id');
-            expect(mocks.mockCreateDraft).toHaveBeenCalled();
-            expect(mockExit).not.toHaveBeenCalled();
+            expect(mocks.mockCreateDraft).not.toHaveBeenCalled();
         });
 
-        it('should skip draft creation if article is unchanged and not published', async () => {
+        it('should re-create draft if article unchanged but draft missing on server', async () => {
             mocks.mockFindArticleByPath.mockReturnValueOnce({ id: 1, source_hash: 'mock_hash' });
+            mocks.mockFindLatestDraftByArticleId.mockReturnValueOnce({ id: 1, media_id: 'existing_media_id' });
+            mocks.mockGetDraft.mockResolvedValueOnce(null); // Missing
+
+            await commandAction(mockFilePath, mockOptions);
+
+            expect(mocks.mockGetDraft).toHaveBeenCalledWith('existing_media_id');
+            expect(mocks.mockCreateDraft).toHaveBeenCalled();
+            expect(mocks.mockInsertDraft).toHaveBeenCalled();
+        });
+        
+         it('should re-create draft if article changed but draft missing on server', async () => {
+            mocks.mockFindArticleByPath.mockReturnValueOnce({ id: 1, source_hash: 'old_hash' });
+            mocks.mockFindLatestDraftByArticleId.mockReturnValueOnce({ id: 1, media_id: 'existing_media_id' });
+            mocks.mockGetDraft.mockResolvedValueOnce(null); // Missing
+
+            await commandAction(mockFilePath, mockOptions);
+
+            expect(mocks.mockGetDraft).toHaveBeenCalledWith('existing_media_id');
+            expect(mocks.mockCreateDraft).toHaveBeenCalled();
+            expect(mocks.mockInsertDraft).toHaveBeenCalled();
+        });
+
+        it('should skip draft creation if thumbnail generation fails', async () => {
+            mocks.mockConvert.mockResolvedValueOnce({ html: 'mock html', thumb_media_id: null });
 
             await commandAction(mockFilePath, mockOptions);
 
             expect(mocks.mockFindArticleByPath).toHaveBeenCalledWith(mockFilePath);
             expect(mocks.mockCreateDraft).not.toHaveBeenCalled();
-            expect(mockExit).not.toHaveBeenCalled();
-        });
-
-        it('should prompt for confirmation if article is unchanged and already published (user confirms)', async () => {
-            mocks.mockFindArticleByPath.mockReturnValueOnce({ id: 1, source_hash: 'mock_hash' });
-            mocks.mockHasArticleBeenPublished.mockReturnValueOnce(true);
-            mocks.mockQuestion.mockImplementationOnce((query: any, callback: any) => callback('y'));
-
-            await commandAction(mockFilePath, mockOptions);
-
-            expect(mocks.mockFindArticleByPath).toHaveBeenCalledWith(mockFilePath);
-            expect(mocks.mockHasArticleBeenPublished).toHaveBeenCalledWith(1);
-            expect(mocks.mockQuestion).toHaveBeenCalled();
-            expect(mocks.mockCreateDraft).toHaveBeenCalled();
-            expect(mockExit).not.toHaveBeenCalled();
-        });
-
-        it('should prompt for confirmation if article is unchanged and already published (user cancels)', async () => {
-            mocks.mockFindArticleByPath.mockReturnValueOnce({ id: 1, source_hash: 'mock_hash' });
-            mocks.mockHasArticleBeenPublished.mockReturnValueOnce(true);
-            mocks.mockQuestion.mockImplementationOnce((query: any, callback: any) => callback('N'));
-
-            await commandAction(mockFilePath, mockOptions);
-
-            expect(mocks.mockFindArticleByPath).toHaveBeenCalledWith(mockFilePath);
-            expect(mocks.mockHasArticleBeenPublished).toHaveBeenCalledWith(1);
-            expect(mocks.mockQuestion).toHaveBeenCalled();
-            expect(mocks.mockCreateDraft).not.toHaveBeenCalled();
-            expect(mockExit).not.toHaveBeenCalled();
-        });
-
-        it('should skip confirmation if --yes option is provided', async () => {
-            mocks.mockFindArticleByPath.mockReturnValueOnce({ id: 1, source_hash: 'mock_hash' });
-            mocks.mockHasArticleBeenPublished.mockReturnValueOnce(true);
-            const optionsWithYes = { ...mockOptions, yes: true };
-
-            await commandAction(mockFilePath, optionsWithYes);
-
-            expect(mocks.mockFindArticleByPath).toHaveBeenCalledWith(mockFilePath);
-            expect(mocks.mockHasArticleBeenPublished).toHaveBeenCalledWith(1);
-            expect(mocks.mockQuestion).not.toHaveBeenCalled();
-            expect(mocks.mockCreateDraft).toHaveBeenCalled();
             expect(mockExit).not.toHaveBeenCalled();
         });
     });

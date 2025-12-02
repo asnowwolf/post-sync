@@ -1,0 +1,37 @@
+{
+  "name": "post-sync",
+  "version": "1.0.0",
+  "description": "内容发布工具",
+  "type": "module",
+  "main": "index.js",
+  "bin": {
+    "post": "dist/index.js"
+  },
+  "scripts": {
+    "start": "node --loader ts-node/esm src/index.ts",
+    "build": "tsc",
+    "test": "vitest run"
+  },
+  "author": "Ralph Wang",
+  "license": "MIT",
+  "keywords": [],
+  "devDependencies": {
+    "@types/better-sqlite3": "^7.6.13",
+    "@types/marked": "^5.0.2",
+    "@types/node": "^24.10.1",
+    "graceful-fs": "^4.2.11",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.9.3",
+    "vitest": "^4.0.14"
+  },
+  "dependencies": {
+    "axios": "^1.13.2",
+    "better-sqlite3": "^12.5.0",
+    "commander": "^14.0.2",
+    "dotenv": "^17.2.3",
+    "form-data": "^4.0.5",
+    "highlight.js": "^11.11.1",
+    "marked": "^17.0.1",
+    "sharp": "^0.34.5"
+  }
+}

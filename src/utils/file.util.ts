@@ -1,0 +1,42 @@
+import * as crypto from 'crypto';
+import * as fs from 'fs';
+import * as path from 'path';
+import {FileError} from '../errors.js';
+
+export function getFileHash(filePath: string): Promise<string> {
+    return new Promise((resolve, reject) => {
+        const hash = crypto.createHash('md5');
+        const stream = fs.createReadStream(filePath);
+        stream.on('data', (data) => hash.update(data));
+        stream.on('end', () => resolve(hash.digest('hex')));
+        stream.on('error', (err) => reject(new FileError(`Failed to read file for hashing: ${filePath}`, filePath)));
+    });
+}
+
+export async function getFileList(inputPath: string): Promise<string[]> {
+    try {
+        const stats = await fs.promises.lstat(inputPath);
+        let realPath = inputPath;
+        if (stats.isSymbolicLink()) {
+            realPath = await fs.promises.realpath(inputPath);
+        }
+
+        const realStats = await fs.promises.stat(realPath);
+
+        if (realStats.isDirectory()) {
+            const files = await fs.promises.readdir(realPath);
+            return files
+                .filter(file => path.extname(file).toLowerCase() === '.md')
+                .map(file => path.join(realPath, file))
+                .sort(); // Sort alphabetically for now
+        } else if (realStats.isFile()) {
+            if (path.extname(realPath).toLowerCase() === '.md') {
+                return [realPath];
+            }
+            return [];
+        }
+        return [];
+    } catch (error: any) {
+        throw new FileError(`Failed to get file list for path: ${inputPath}. ${error.message}`, inputPath);
+    }
+}

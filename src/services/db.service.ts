@@ -124,6 +124,16 @@ export class DbService {
         return !!stm.get(articleId);
     }
 
+    public findPublicationByDraftId(draftId: number): { id: number; publish_id: string } | undefined {
+        const stm = this.db.prepare('SELECT id, publish_id FROM publications WHERE draft_id = ?');
+        return stm.get(draftId) as { id: number; publish_id: string } | undefined;
+    }
+
+    public deletePublication(id: number): Database.RunResult {
+        const stm = this.db.prepare('DELETE FROM publications WHERE id = ?');
+        return stm.run(id);
+    }
+
     public getMaterial(localPath: string): { id: number; hash: string; media_id: string; url: string } | undefined {
         const stm = this.db.prepare('SELECT id, hash, media_id, url FROM materials WHERE local_path = ?');
         return stm.get(localPath) as { id: number; hash: string; media_id: string; url: string } | undefined;

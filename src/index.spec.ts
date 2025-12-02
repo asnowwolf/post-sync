@@ -22,12 +22,17 @@ const mocks = vi.hoisted(() => {
         mockPerformTransaction: vi.fn((cb) => cb()),
         mockFindLatestDraftByArticleId: vi.fn(),
         mockInsertPublication: vi.fn(),
+        mockFindPublicationByDraftId: vi.fn(),
+        mockDeletePublication: vi.fn(),
 
         // WeChatService
         mockCreateDraft: vi.fn().mockResolvedValue('mock_media_id'),
         mockPublishDraft: vi.fn().mockResolvedValue('mock_publish_id'),
         mockGetDraft: vi.fn(),
         mockUpdateDraft: vi.fn(),
+        mockGetPublishStatus: vi.fn(),
+        mockDeletePublishedArticle: vi.fn(),
+        mockBatchGetPublishedArticles: vi.fn(),
 
         // MarkdownService
         mockConvert: vi.fn().mockImplementation((_wechatService: any, _dbService: any, _author?: string, _digest?: string) => {
@@ -94,6 +99,8 @@ vi.mock('./services/db.service.js', () => {
                 performTransaction: mocks.mockPerformTransaction,
                 findLatestDraftByArticleId: mocks.mockFindLatestDraftByArticleId,
                 insertPublication: mocks.mockInsertPublication,
+                findPublicationByDraftId: mocks.mockFindPublicationByDraftId,
+                deletePublication: mocks.mockDeletePublication,
             };
         }),
     };
@@ -108,6 +115,9 @@ vi.mock('./services/wechat.service.js', () => {
                 publishDraft: mocks.mockPublishDraft,
                 getDraft: mocks.mockGetDraft,
                 updateDraft: mocks.mockUpdateDraft,
+                getPublishStatus: mocks.mockGetPublishStatus,
+                deletePublishedArticle: mocks.mockDeletePublishedArticle,
+                batchGetPublishedArticles: mocks.mockBatchGetPublishedArticles,
             };
         }),
     };
@@ -293,6 +303,115 @@ describe('CLI', () => {
             expect(mocks.mockFindArticleByPath).toHaveBeenCalledWith(mockFilePath);
             expect(mocks.mockCreateDraft).not.toHaveBeenCalled();
             expect(mockExit).not.toHaveBeenCalled();
+        });
+    });
+
+    describe('delete command', () => {
+        const mockFilePath = '/mock/path/article.md';
+        const mockOptions = { profile: 'default' };
+
+        beforeEach(async () => {
+            commandAction = commandActions['delete <path>'];
+            if (!commandAction) {
+                throw new Error("Could not find 'delete' command action.");
+            }
+        });
+
+        it('should delete a published article', async () => {
+            // Mock setup
+            mocks.mockFindArticleByPath.mockReturnValueOnce({ id: 1 });
+            mocks.mockFindLatestDraftByArticleId.mockReturnValueOnce({ id: 1, media_id: 'draft_media_id' });
+            mocks.mockFindPublicationByDraftId.mockReturnValueOnce({ id: 1, publish_id: 'publish_id' });
+            mocks.mockGetPublishStatus.mockResolvedValueOnce({ publish_status: 0, article_id: 'article_id' }); // Success
+            mocks.mockQuestion.mockImplementation((_query, cb) => cb('y')); // Confirm
+
+            await commandAction(mockFilePath, mockOptions);
+
+            expect(mocks.mockGetPublishStatus).toHaveBeenCalledWith('publish_id');
+            expect(mocks.mockDeletePublishedArticle).toHaveBeenCalledWith('article_id');
+            expect(mocks.mockDeletePublication).toHaveBeenCalledWith(1);
+        });
+
+        it('should handle missing article in DB', async () => {
+            mocks.mockFindArticleByPath.mockReturnValueOnce(undefined);
+
+            await commandAction(mockFilePath, mockOptions);
+
+            expect(mocks.mockFindArticleByPath).toHaveBeenCalledWith(mockFilePath);
+            expect(mocks.mockGetPublishStatus).not.toHaveBeenCalled();
+        });
+
+        it('should handle missing publication record', async () => {
+            mocks.mockFindArticleByPath.mockReturnValueOnce({ id: 1 });
+            mocks.mockFindLatestDraftByArticleId.mockReturnValueOnce({ id: 1, media_id: 'draft_media_id' });
+            mocks.mockFindPublicationByDraftId.mockReturnValueOnce(undefined);
+
+            await commandAction(mockFilePath, mockOptions);
+
+            expect(mocks.mockFindPublicationByDraftId).toHaveBeenCalledWith(1);
+            expect(mocks.mockGetPublishStatus).not.toHaveBeenCalled();
+        });
+
+        it('should not delete if user cancels', async () => {
+            mocks.mockFindArticleByPath.mockReturnValueOnce({ id: 1 });
+            mocks.mockFindLatestDraftByArticleId.mockReturnValueOnce({ id: 1, media_id: 'draft_media_id' });
+            mocks.mockFindPublicationByDraftId.mockReturnValueOnce({ id: 1, publish_id: 'publish_id' });
+            mocks.mockGetPublishStatus.mockResolvedValueOnce({ publish_status: 0, article_id: 'article_id' });
+            mocks.mockQuestion.mockImplementation((_query, cb) => cb('n')); // Cancel
+
+            await commandAction(mockFilePath, mockOptions);
+
+            expect(mocks.mockDeletePublishedArticle).not.toHaveBeenCalled();
+            expect(mocks.mockDeletePublication).not.toHaveBeenCalled();
+        });
+    });
+
+    describe('delete-all command', () => {
+        beforeEach(async () => {
+            commandAction = commandActions['delete-all'];
+            if (!commandAction) {
+                throw new Error("Could not find 'delete-all' command action.");
+            }
+        });
+
+        it('should delete all published articles interactively', async () => {
+            const responseWithItem = {
+                total_count: 1,
+                item: [{
+                    article_id: 'article_id_1',
+                    content: { news_item: [{ title: 'Article 1' }] },
+                    update_time: 1670000000,
+                }]
+            };
+
+            // 1. Initial check
+            mocks.mockBatchGetPublishedArticles.mockResolvedValueOnce(responseWithItem);
+            // 2. Loop fetch
+            mocks.mockBatchGetPublishedArticles.mockResolvedValueOnce(responseWithItem);
+            // 3. Second batch empty to end loop
+            mocks.mockBatchGetPublishedArticles.mockResolvedValueOnce({
+                total_count: 0,
+                item: []
+            });
+
+            mocks.mockQuestion.mockImplementation((_query, cb) => cb('y'));
+
+            await commandAction({});
+
+            expect(mocks.mockBatchGetPublishedArticles).toHaveBeenCalledTimes(3);
+            expect(mocks.mockDeletePublishedArticle).toHaveBeenCalledWith('article_id_1');
+        });
+
+        it('should handle no articles', async () => {
+             mocks.mockBatchGetPublishedArticles.mockResolvedValueOnce({
+                total_count: 0,
+                item: []
+            });
+            
+            await commandAction({});
+            
+            expect(mocks.mockBatchGetPublishedArticles).toHaveBeenCalledTimes(1);
+            expect(mocks.mockDeletePublishedArticle).not.toHaveBeenCalled();
         });
     });
 });

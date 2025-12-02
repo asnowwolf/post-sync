@@ -45,6 +45,11 @@ export class WeChatService {
                     throw new ApiError(`WeChat API Error: ${res.data.errmsg}`, res.status, res.data);
                 }
                 return res;
+            }, {
+                delayMs: 15000,
+                backoffStrategy: 'exponential',
+                maxDelayMs: 60000,
+                maxAttempts: 4
             });
 
             logger.debug(`getAccessToken response: status=${response.status}, data=${JSON.stringify(response.data)}`);
@@ -55,10 +60,13 @@ export class WeChatService {
             return this.accessToken!;
         } catch (error: any) {
             logger.error('Failed to get access token after retries:', error.message);
+            if (error instanceof ApiError) {
+                throw error;
+            }
             if (error.response) {
                 logger.error(`Error response: status=${error.response.status}, data=${JSON.stringify(error.response.data)}`);
             }
-            throw new ApiError('Failed to get access token', error.response?.status, error.response?.data);
+            throw new ApiError(`Failed to get access token: ${error.message}`, error.response?.status, error.response?.data);
         }
     }
 
@@ -80,6 +88,11 @@ export class WeChatService {
                     throw new ApiError(`WeChat API Error: ${res.data.errmsg}`, res.status, res.data);
                 }
                 return res;
+            }, {
+                delayMs: 15000,
+                backoffStrategy: 'exponential',
+                maxDelayMs: 60000,
+                maxAttempts: 4
             });
 
             logger.debug(`addPermanentMaterial response: status=${response.status}, data=${JSON.stringify(response.data)}`);
@@ -87,10 +100,13 @@ export class WeChatService {
             return {media_id: response.data.media_id, url: response.data.url};
         } catch (error: any) {
             logger.error(`Failed to upload permanent ${type} after retries:`, error.message);
+            if (error instanceof ApiError) {
+                throw error;
+            }
             if (error.response) {
                 logger.error(`Error response: status=${error.response.status}, data=${JSON.stringify(error.response.data)}`);
             }
-            throw new ApiError(`Failed to upload permanent ${type}`, error.response?.status, error.response?.data);
+            throw new ApiError(`Failed to upload permanent ${type}: ${error.message}`, error.response?.status, error.response?.data);
         }
     }
 
@@ -120,6 +136,11 @@ export class WeChatService {
                     throw new ApiError(`WeChat API Error: ${res.data.errmsg}`, res.status, res.data);
                 }
                 return res;
+            }, {
+                delayMs: 15000,
+                backoffStrategy: 'exponential',
+                maxDelayMs: 60000,
+                maxAttempts: 4
             });
 
             logger.debug(`createDraft response: status=${response.status}, data=${JSON.stringify(response.data)}`);
@@ -127,10 +148,13 @@ export class WeChatService {
             return response.data.media_id;
         } catch (error: any) {
             logger.error(`Failed to create draft after retries:`, error.message);
+            if (error instanceof ApiError) {
+                throw error;
+            }
             if (error.response) {
                 logger.error(`Error response: status=${error.response.status}, data=${JSON.stringify(error.response.data)}`);
             }
-            throw new ApiError('Failed to create draft', error.response?.status, error.response?.data);
+            throw new ApiError(`Failed to create draft: ${error.message}`, error.response?.status, error.response?.data);
         }
     }
 
@@ -147,36 +171,52 @@ export class WeChatService {
                     throw new ApiError(`WeChat API Error: ${res.data.errmsg}`, res.status, res.data);
                 }
                 return res;
+            }, {
+                delayMs: 15000,
+                backoffStrategy: 'exponential',
+                maxDelayMs: 60000,
+                maxAttempts: 4
             });
 
             logger.info(`Successfully submitted for publication. Publish ID: ${response.data.publish_id}`);
             return response.data.publish_id;
         } catch (error: any) {
             logger.error(`Failed to publish draft after retries:`, error.message);
-            throw new ApiError('Failed to publish draft', error.response?.status, error.response?.data);
+            if (error instanceof ApiError) {
+                throw error;
+            }
+            throw new ApiError(`Failed to publish draft: ${error.message}`, error.response?.status, error.response?.data);
         }
     }
 
     public async getPublishStatus(publishId: string): Promise<any> {
         const token = await this.getAccessToken();
         const url = `${this.options.wechatApiBaseUrl}/cgi-bin/freepublish/get?access_token=${token}`;
-        const params = {publish_id: publishId};
+        const data = {publish_id: publishId};
 
         logger.info(`Checking publish status for publish_id '${publishId}'...`);
         try {
             const response = await retry(async () => {
-                const res = await this.http.get(url, {params});
+                const res = await this.http.post(url, data);
                 if (res.data.errcode) {
                     throw new ApiError(`WeChat API Error: ${res.data.errmsg}`, res.status, res.data);
                 }
                 return res;
+            }, {
+                delayMs: 15000,
+                backoffStrategy: 'exponential',
+                maxDelayMs: 60000,
+                maxAttempts: 4
             });
 
             logger.info(`Publish status: ${response.data.publish_status === 0 ? 'Success' : 'In Progress/Failed'}`);
             return response.data;
         } catch (error: any) {
             logger.error(`Failed to get publish status after retries:`, error.message);
-            throw new ApiError('Failed to get publish status', error.response?.status, error.response?.data);
+            if (error instanceof ApiError) {
+                throw error;
+            }
+            throw new ApiError(`Failed to get publish status: ${error.message}`, error.response?.status, error.response?.data);
         }
     }
 
@@ -197,6 +237,10 @@ export class WeChatService {
                 }
                 return res;
             }, {
+                delayMs: 15000,
+                backoffStrategy: 'exponential',
+                maxDelayMs: 60000,
+                maxAttempts: 4,
                 retryCondition: (error) => {
                     // Only retry for "请勿频繁请求" error, not for other API errors or 40007
                     return error.message.includes('请勿频繁请求');
@@ -206,7 +250,10 @@ export class WeChatService {
             return response; // Can be null if errcode 40007 was returned
         } catch (error: any) {
             logger.error(`Failed to get draft after retries:`, error.message);
-            throw new ApiError('Failed to get draft', error.response?.status, error.response?.data);
+            if (error instanceof ApiError) {
+                throw error;
+            }
+            throw new ApiError(`Failed to get draft: ${error.message}`, error.response?.status, error.response?.data);
         }
     }
 
@@ -232,15 +279,27 @@ export class WeChatService {
 
         logger.info(`Updating draft '${mediaId}' (index: ${index})...`);
         try {
-            const response = await this.http.post(url, data);
+            const response = await retry(async () => {
+                const res = await this.http.post(url, data);
+                if (res.data.errcode) {
+                    throw new ApiError(`WeChat API Error: ${res.data.errmsg}`, res.status, res.data);
+                }
+                return res;
+            }, {
+                delayMs: 15000,
+                backoffStrategy: 'exponential',
+                maxDelayMs: 60000,
+                maxAttempts: 4
+            });
+
             logger.debug(`updateDraft response: status=${response.status}, data=${JSON.stringify(response.data)}`);
-            if (response.data.errcode) {
-                throw new ApiError(`WeChat API Error: ${response.data.errmsg}`, response.status, response.data);
-            }
             logger.info(`Successfully updated draft '${mediaId}'.`);
         } catch (error: any) {
-            logger.error(`Failed to update draft:`, error.message);
-            throw new ApiError('Failed to update draft', error.response?.status, error.response?.data);
+            logger.error(`Failed to update draft after retries:`, error.message);
+            if (error instanceof ApiError) {
+                throw error;
+            }
+            throw new ApiError(`Failed to update draft: ${error.message}`, error.response?.status, error.response?.data);
         }
     }
 
@@ -251,45 +310,99 @@ export class WeChatService {
 
         logger.debug(`Checking existence of permanent material '${mediaId}'...`);
         try {
-            // Use a custom config to avoid downloading the whole stream if possible, 
-            // but axios might download it anyway. 
-            // For checking existence, we can try to rely on headers or just partial download if supported.
-            // However, typical WeChat API usage requires POST body.
-            // We'll just accept the download overhead for correctness, or catch the error.
-            const response = await this.http.post(url, data, {
-                responseType: 'stream', // Don't buffer the whole image in memory
-                validateStatus: (status) => status < 500, // Handle 4xx manually
+            const result = await retry(async () => {
+                const response = await this.http.post(url, data, {
+                    responseType: 'stream',
+                    validateStatus: (status) => status < 500,
+                });
+
+                const contentType = response.headers['content-type'];
+                if (contentType && contentType.includes('application/json')) {
+                    const stream = response.data;
+                    const chunks = [];
+                    for await (const chunk of stream) {
+                        chunks.push(chunk);
+                    }
+                    const body = Buffer.concat(chunks).toString();
+                    const json = JSON.parse(body);
+
+                    if (json.errcode) {
+                        if (json.errcode === 40007) {
+                            return false; // Not a retryable error, return false immediately
+                        }
+                        // This will be caught by the outer retry's catch, and then evaluated by retryCondition
+                        throw new ApiError(`WeChat API Error: ${json.errmsg}`, response.status, json);
+                    }
+                }
+                return true; // Successfully determined it exists (or is binary stream without JSON error)
             });
-            
-            // If it's a file download, it won't have 'errcode' in JSON body easily accessible without reading stream.
-            // But if it's an error, WeChat returns JSON (application/json).
-            // If success, it returns content-type image/xxx.
-            
-            const contentType = response.headers['content-type'];
-            if (contentType && contentType.includes('application/json')) {
-                // It's likely an error (or a JSON response for video/news)
-                // We need to read the stream to check errcode.
-                const stream = response.data;
-                const chunks = [];
-                for await (const chunk of stream) {
-                    chunks.push(chunk);
-                }
-                const body = Buffer.concat(chunks).toString();
-                const json = JSON.parse(body);
-                if (json.errcode && json.errcode === 40007) {
-                    return false;
-                }
-                if (json.errcode) {
-                    logger.warn(`checkMediaExists API Error: ${json.errmsg}`);
-                    return false; // Treat other errors as "not available" or assume does not exist? 
-                                  // Safest to return false and let caller re-upload.
-                }
-            }
-            
-            return true; // Exists (binary stream or valid JSON w/o error)
+            return result; // Can be true or false
         } catch (error: any) {
-             logger.warn(`Failed to check media existence: ${error.message}`);
-             return false;
+            logger.warn(`Failed to check media existence after retries: ${error.message}`);
+            return false;
+        }
+    }
+
+    public async deletePublishedArticle(articleId: string): Promise<void> {
+        const token = await this.getAccessToken();
+        const url = `${this.options.wechatApiBaseUrl}/cgi-bin/freepublish/delete?access_token=${token}`;
+        const data = { article_id: articleId };
+
+        logger.info(`Deleting published article '${articleId}'...`);
+        try {
+            await retry(async () => {
+                const res = await this.http.post(url, data);
+                if (res.data.errcode) {
+                    throw new ApiError(`WeChat API Error: ${res.data.errmsg}`, res.status, res.data);
+                }
+                return res;
+            }, {
+                delayMs: 15000,
+                backoffStrategy: 'exponential',
+                maxDelayMs: 60000,
+                maxAttempts: 4
+            });
+            logger.info(`Successfully deleted published article '${articleId}'.`);
+        } catch (error: any) {
+            logger.error(`Failed to delete published article after retries:`, error.message);
+            if (error instanceof ApiError) {
+                throw error;
+            }
+            throw new ApiError(`Failed to delete published article: ${error.message}`, error.response?.status, error.response?.data);
+        }
+    }
+
+    public async batchGetPublishedArticles(offset: number, count: number): Promise<any> {
+        const token = await this.getAccessToken();
+        const url = `${this.options.wechatApiBaseUrl}/cgi-bin/freepublish/batchget?access_token=${token}`;
+        const data = {
+            offset,
+            count,
+            no_content: 1 // Only get metadata, not content
+        };
+
+        logger.info(`Batch getting published articles (offset: ${offset}, count: ${count})...`);
+        try {
+            const response = await retry(async () => {
+                const res = await this.http.post(url, data);
+                if (res.data.errcode) {
+                    throw new ApiError(`WeChat API Error: ${res.data.errmsg}`, res.status, res.data);
+                }
+                return res;
+            }, {
+                delayMs: 15000,
+                backoffStrategy: 'exponential',
+                maxDelayMs: 60000,
+                maxAttempts: 4
+            });
+
+            return response.data;
+        } catch (error: any) {
+            logger.error(`Failed to batch get published articles after retries:`, error.message);
+            if (error instanceof ApiError) {
+                throw error;
+            }
+            throw new ApiError(`Failed to batch get published articles: ${error.message}`, error.response?.status, error.response?.data);
         }
     }
 }

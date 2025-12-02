@@ -153,4 +153,23 @@ describe('DbService', () => {
         expect(mockPrepare).toHaveBeenCalledWith(expect.stringContaining('INSERT INTO materials (local_path, hash, media_id, url, updated_at)'));
         expect(mockRun).toHaveBeenCalledWith(localPath, hash, mediaId, url, expect.any(String));
     });
+
+    it('should find a publication by draft ID', () => {
+        const expectedPublication = { id: 3, publish_id: 'publish_id_xyz' };
+        mockGet.mockReturnValue(expectedPublication);
+
+        const publication = dbService.findPublicationByDraftId(2);
+
+        expect(mockPrepare).toHaveBeenCalledWith('SELECT id, publish_id FROM publications WHERE draft_id = ?');
+        expect(mockGet).toHaveBeenCalledWith(2);
+        expect(publication).toEqual(expectedPublication);
+    });
+
+    it('should delete a publication by ID', () => {
+        const id = 3;
+        dbService.deletePublication(id);
+
+        expect(mockPrepare).toHaveBeenCalledWith('DELETE FROM publications WHERE id = ?');
+        expect(mockRun).toHaveBeenCalledWith(id);
+    });
 });

@@ -28,6 +28,8 @@ describe('WeChatService', () => {
 
     beforeEach(() => {
         vi.clearAllMocks();
+        mockPost.mockReset();
+        mockGet.mockReset();
         // Pass mockConfig directly to WeChatService constructor
         wechatService = new WeChatService({ ...mockConfig, httpClient: mockHttpClient as any });
         // Default successful access token response
@@ -104,16 +106,16 @@ describe('WeChatService', () => {
 
     it('should get publish status', async () => {
         const publishId = 'publish_job_id';
-        mockGet.mockResolvedValueOnce({
+        mockPost.mockResolvedValueOnce({
             data: { publish_status: 0 },
             status: 200,
         });
 
         const status = await wechatService.getPublishStatus(publishId);
 
-        expect(mockGet).toHaveBeenCalledWith(
+        expect(mockPost).toHaveBeenCalledWith(
             `${mockConfig.wechatApiBaseUrl}/cgi-bin/freepublish/get?access_token=valid_token`,
-            { params: { publish_id: publishId } }
+            { publish_id: publishId }
         );
         expect(status).toEqual({ publish_status: 0 });
     });
@@ -126,5 +128,42 @@ describe('WeChatService', () => {
 
         await expect(wechatService.addPermanentMaterial(Buffer.from(''), 'image', 't.jpg', 'image/jpeg'))
             .rejects.toThrow(ApiError);
+    });
+
+    it('should delete published article', async () => {
+        const articleId = 'article_id_to_delete';
+        mockPost.mockResolvedValueOnce({
+            data: { errcode: 0, errmsg: 'ok' },
+            status: 200,
+        });
+
+        await wechatService.deletePublishedArticle(articleId);
+
+        expect(mockPost).toHaveBeenCalledWith(
+            `${mockConfig.wechatApiBaseUrl}/cgi-bin/freepublish/delete?access_token=valid_token`,
+            { article_id: articleId }
+        );
+    });
+
+    it('should batch get published articles', async () => {
+        const offset = 0;
+        const count = 20;
+        const mockResponse = {
+            total_count: 10,
+            item_count: 10,
+            item: [],
+        };
+        mockPost.mockResolvedValueOnce({
+            data: mockResponse,
+            status: 200,
+        });
+
+        const result = await wechatService.batchGetPublishedArticles(offset, count);
+
+        expect(mockPost).toHaveBeenCalledWith(
+            `${mockConfig.wechatApiBaseUrl}/cgi-bin/freepublish/batchget?access_token=valid_token`,
+            { offset, count, no_content: 1 }
+        );
+        expect(result).toEqual(mockResponse);
     });
 });

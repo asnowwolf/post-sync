@@ -25,6 +25,20 @@ async function confirmAction(query: string): Promise<boolean> {
     });
 }
 
+async function promptUser(query: string): Promise<string> {
+    const rl = readline.createInterface({
+        input: process.stdin,
+        output: process.stdout,
+    });
+
+    return new Promise((resolve) => {
+        rl.question(query + ' ', (answer) => {
+            rl.close();
+            resolve(answer.trim().toLowerCase());
+        });
+    });
+}
+
 const program = new Command();
 
 program
@@ -42,29 +56,40 @@ program
         logger.info(`'create' command called for path: ${rawPath}`);
         logger.debug('Options:', options);
 
+        let currentConfig;
+        let dbService;
+        let wechatService;
+        let markdownService;
+        let files;
+
         try {
-            const currentConfig = getConfig(options.profile);
+            currentConfig = getConfig(options.profile);
             logger.debug("Config loaded.");
-            const dbService = new DbService();
+            dbService = new DbService();
             logger.debug("DbService initialized.");
-            const wechatService = new WeChatService({
+            wechatService = new WeChatService({
                 appId: currentConfig.appId,
                 appSecret: currentConfig.appSecret,
                 wechatApiBaseUrl: currentConfig.wechatApiBaseUrl,
             });
             logger.debug("WeChatService initialized.");
-            const markdownService = new MarkdownService(wechatService, dbService);
+            markdownService = new MarkdownService(wechatService, dbService);
             logger.debug("MarkdownService initialized.");
 
             const resolvedPath = path.resolve(process.cwd(), rawPath);
-            const files = await getFileList(resolvedPath);
+            files = await getFileList(resolvedPath);
 
             if (files.length === 0) {
                 logger.warn('No Markdown files found at the specified path.');
                 return;
             }
+        } catch (error: any) {
+            logger.error('Initialization failed:', error.message);
+            return;
+        }
 
-            for (const file of files) {
+        for (const file of files) {
+            try {
                 const hash = await getFileHash(file);
                 const articleEntry = dbService.findArticleByPath(file);
                 const draftEntry = articleEntry ? dbService.findLatestDraftByArticleId(articleEntry.id) : undefined;
@@ -154,11 +179,11 @@ program
                         }
                     });
                 }
-            }
-        } catch (error: any) {
-            logger.error('An error occurred during the create process:', error.message);
-            if (error.details) {
-                logger.error('API Error Details:', error.details);
+            } catch (error: any) {
+                logger.error(`Failed to process '${file}':`, error.message);
+                if (error.details) {
+                    logger.error('API Error Details:', JSON.stringify(error.details, null, 2));
+                }
             }
         }
     });
@@ -172,24 +197,34 @@ program
         logger.info(`'publish' command called for path: ${rawPath}`);
         logger.debug('Options:', options);
 
+        let currentConfig;
+        let dbService;
+        let wechatService;
+        let files;
+
         try {
-            const currentConfig = getConfig(options.profile);
-            const dbService = new DbService();
-            const wechatService = new WeChatService({
+            currentConfig = getConfig(options.profile);
+            dbService = new DbService();
+            wechatService = new WeChatService({
                 appId: currentConfig.appId,
                 appSecret: currentConfig.appSecret,
                 wechatApiBaseUrl: currentConfig.wechatApiBaseUrl,
             });
 
             const resolvedPath = path.resolve(process.cwd(), rawPath);
-            const files = await getFileList(resolvedPath);
+            files = await getFileList(resolvedPath);
 
             if (files.length === 0) {
                 logger.warn('No Markdown files found at the specified path.');
                 return;
             }
+        } catch (error: any) {
+            logger.error('Initialization failed:', error.message);
+            return;
+        }
 
-            for (const file of files) {
+        for (const file of files) {
+            try {
                 const articleEntry = dbService.findArticleByPath(file);
                 if (!articleEntry) {
                     logger.warn(`Article for '${file}' not found in database. Please run 'create' first.`);
@@ -205,11 +240,11 @@ program
                 const publishId = await wechatService.publishDraft(draft.media_id);
                 dbService.insertPublication(draft.id, publishId);
                 logger.info(`Successfully submitted '${file}' for publication with publish_id: ${publishId}.`);
-            }
-        } catch (error: any) {
-            logger.error('An error occurred during the publish process:', error.message);
-            if (error.details) {
-                logger.error('API Error Details:', error.details);
+            } catch (error: any) {
+                logger.error(`Failed to publish '${file}':`, error.message);
+                if (error.details) {
+                    logger.error('API Error Details:', JSON.stringify(error.details, null, 2));
+                }
             }
         }
     });
@@ -224,25 +259,36 @@ program
         logger.info(`'post' command called for path: ${rawPath}`);
         logger.debug('Options:', options);
 
+        let currentConfig;
+        let dbService;
+        let wechatService;
+        let markdownService;
+        let files;
+
         try {
-            const currentConfig = getConfig(options.profile);
-            const dbService = new DbService();
-            const wechatService = new WeChatService({
+            currentConfig = getConfig(options.profile);
+            dbService = new DbService();
+            wechatService = new WeChatService({
                 appId: currentConfig.appId,
                 appSecret: currentConfig.appSecret,
                 wechatApiBaseUrl: currentConfig.wechatApiBaseUrl,
             });
-            const markdownService = new MarkdownService(wechatService, dbService);
+            markdownService = new MarkdownService(wechatService, dbService);
 
             const resolvedPath = path.resolve(process.cwd(), rawPath);
-            const files = await getFileList(resolvedPath);
+            files = await getFileList(resolvedPath);
 
             if (files.length === 0) {
                 logger.warn('No Markdown files found at the specified path.');
                 return;
             }
+        } catch (error: any) {
+            logger.error('Initialization failed:', error.message);
+            return;
+        }
 
-            for (const file of files) {
+        for (const file of files) {
+            try {
                 logger.info(`Processing '${file}'...`);
 
                 const hash = await getFileHash(file);
@@ -353,16 +399,208 @@ program
                 } else {
                     logger.warn(`No draft available for '${file}' to publish.`);
                 }
-            }
-        } catch (error: any) {
-            logger.error('An error occurred during the post process:', error.message);
-            if (error.details) {
-                logger.error('API Error Details:', error.details);
+            } catch (error: any) {
+                logger.error(`Failed to post '${file}':`, error.message);
+                if (error.details) {
+                    logger.error('API Error Details:', JSON.stringify(error.details, null, 2));
+                }
             }
         }
     });
 
+program
+    .command('delete <path>')
+    .description('根据本地文件路径删除已发布的文章')
+    .option('--profile <id>', '指定要使用的配置 profile ID')
+    .action(async (rawPath, options) => {
+        logger.info(`'delete' command called for path: ${rawPath}`);
+        logger.debug('Options:', options);
 
+        let currentConfig;
+        let dbService;
+        let wechatService;
+
+        try {
+            currentConfig = getConfig(options.profile);
+            dbService = new DbService();
+            wechatService = new WeChatService({
+                appId: currentConfig.appId,
+                appSecret: currentConfig.appSecret,
+                wechatApiBaseUrl: currentConfig.wechatApiBaseUrl,
+            });
+
+            const resolvedPath = path.resolve(process.cwd(), rawPath);
+            const files = await getFileList(resolvedPath);
+
+            if (files.length === 0) {
+                logger.warn('No Markdown files found at the specified path.');
+                return;
+            }
+
+            for (const file of files) {
+                try {
+                    const articleEntry = dbService.findArticleByPath(file);
+                    if (!articleEntry) {
+                        logger.warn(`Article for '${file}' not found in database.`);
+                        continue;
+                    }
+
+                    const draft = dbService.findLatestDraftByArticleId(articleEntry.id);
+                    if (!draft) {
+                        logger.warn(`No draft found for '${file}'.`);
+                        continue;
+                    }
+
+                    const publication = dbService.findPublicationByDraftId(draft.id);
+                    if (!publication) {
+                        logger.warn(`No publication record found for '${file}'.`);
+                        continue;
+                    }
+
+                    logger.info(`Found publication record for '${file}' (publish_id: ${publication.publish_id}).`);
+                    
+                    // We need to get the article_id using the publish_id
+                    const status = await wechatService.getPublishStatus(publication.publish_id);
+                    
+                    if (status.publish_status !== 0) { // 0 means success
+                         logger.warn(`Publication status for '${file}' is not success (status: ${status.publish_status}). Cannot delete.`);
+                         continue;
+                    }
+                    
+                    const articleId = status.article_id;
+                    
+                    if (!articleId) {
+                        logger.error(`Could not retrieve article_id for '${file}' from publish status. Maybe it was not published successfully?`);
+                        continue;
+                    }
+
+                    const confirm = await confirmAction(`Are you sure you want to delete the published article for '${file}' (article_id: ${articleId})? This cannot be undone.`);
+                    if (!confirm) {
+                        logger.info(`Deletion cancelled for '${file}'.`);
+                        continue;
+                    }
+
+                    await wechatService.deletePublishedArticle(articleId);
+                    dbService.deletePublication(publication.id);
+                    logger.info(`Successfully deleted published article for '${file}'.`);
+
+                } catch (error: any) {
+                    logger.error(`Failed to delete '${file}':`, error.message);
+                    if (error.details) {
+                        logger.error('API Error Details:', JSON.stringify(error.details, null, 2));
+                    }
+                }
+            }
+
+        } catch (error: any) {
+            logger.error('An error occurred during the delete process:', error.message);
+        }
+    });
+
+program
+    .command('delete-all')
+    .description('删除所有已发布的文章 (交互式)')
+    .option('--profile <id>', '指定要使用的配置 profile ID')
+    .action(async (options) => {
+        logger.info(`'delete-all' command called.`);
+        logger.debug('Options:', options);
+
+        let currentConfig;
+        let wechatService;
+
+        try {
+            currentConfig = getConfig(options.profile);
+            wechatService = new WeChatService({
+                appId: currentConfig.appId,
+                appSecret: currentConfig.appSecret,
+                wechatApiBaseUrl: currentConfig.wechatApiBaseUrl,
+            });
+        } catch (error: any) {
+            logger.error('Initialization failed:', error.message);
+            return;
+        }
+
+        try {
+            let skippedCount = 0;
+            let deleteAll = false;
+
+            // Initial check
+            const initialData = await wechatService.batchGetPublishedArticles(0, 1);
+            const total = initialData.total_count;
+            logger.info(`Total published articles found: ${total}`);
+
+            if (total === 0) {
+                logger.info('No published articles to delete.');
+                return;
+            }
+
+            while (true) {
+                // Always fetch a batch starting from what we've decided to keep
+                const batchData = await wechatService.batchGetPublishedArticles(skippedCount, 20);
+                const items = batchData.item;
+
+                if (!items || items.length === 0) {
+                    break;
+                }
+
+                for (const item of items) {
+                    const articleId = item.article_id;
+                    const title = item.content?.news_item?.[0]?.title || 'Unknown Title';
+                    const updateTime = new Date(item.update_time * 1000).toLocaleString();
+
+                    if (deleteAll) {
+                        logger.info(`Deleting '${title}' (${articleId})...`);
+                        try {
+                            await wechatService.deletePublishedArticle(articleId);
+                        } catch (e: any) {
+                            logger.error(`Failed to delete '${title}': ${e.message}`);
+                            skippedCount++; // If failed, treat as skipped to avoid stuck loop
+                        }
+                        continue;
+                    }
+
+                    const answer = await promptUser(`Delete "${title}" (Published: ${updateTime})? (y=yes, n=no, a=all, q=quit)`);
+
+                    if (answer === 'q' || answer === 'quit') {
+                        logger.info('Operation quit by user.');
+                        return;
+                    }
+
+                    if (answer === 'a' || answer === 'all') {
+                        deleteAll = true;
+                        logger.info(`Deleting '${title}' (${articleId})...`);
+                         try {
+                            await wechatService.deletePublishedArticle(articleId);
+                        } catch (e: any) {
+                            logger.error(`Failed to delete '${title}': ${e.message}`);
+                            skippedCount++;
+                        }
+                        continue;
+                    }
+
+                    if (answer === 'y' || answer === 'yes') {
+                        logger.info(`Deleting '${title}' (${articleId})...`);
+                         try {
+                            await wechatService.deletePublishedArticle(articleId);
+                        } catch (e: any) {
+                             logger.error(`Failed to delete '${title}': ${e.message}`);
+                             skippedCount++;
+                        }
+                    } else {
+                        logger.info(`Skipped '${title}'.`);
+                        skippedCount++;
+                    }
+                }
+            }
+            logger.info('Finished processing all published articles.');
+
+        } catch (error: any) {
+            logger.error('An error occurred during delete-all:', error.message);
+            if (error.details) {
+                logger.error('API Error Details:', JSON.stringify(error.details, null, 2));
+            }
+        }
+    });
 
 program.parse(process.argv);
 

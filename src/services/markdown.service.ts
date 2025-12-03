@@ -1,5 +1,4 @@
-import type {Tokens} from 'marked';
-import {marked, Renderer} from 'marked';
+import MarkdownIt from 'markdown-it';
 import {WeChatService} from './wechat.service.js';
 import {DbService} from './db.service.js';
 import * as fs from 'fs/promises';
@@ -11,14 +10,17 @@ import {logger} from '../logger.js';
 import * as yaml from 'js-yaml';
 import * as crypto from 'crypto';
 
-// Simplify by removing all highlighting logic for now
-marked.use({
-    gfm: true,
-    pedantic: false,
-});
-
 export class MarkdownService {
-    constructor(private wechatService: WeChatService, private dbService: DbService) {}
+    private md: MarkdownIt;
+
+    constructor(private wechatService: WeChatService, private dbService: DbService) {
+        this.md = new MarkdownIt({
+            html: true,
+            breaks: false,
+            linkify: true,
+            typographer: false,
+        });
+    }
 
     private isUrl(s: string): boolean {
         try {
@@ -56,7 +58,7 @@ export class MarkdownService {
             }
         } catch (error: any) {
             logger.error(`Failed to get image buffer for ${src}. Error: ${error.message}`);
-            throw error; // Re-throw to propagate the error
+            throw error;
         }
 
         try {
@@ -69,7 +71,7 @@ export class MarkdownService {
             return {buffer, contentType, filename};
         } catch (error: any) {
             logger.error(`Failed to process image metadata for ${filename}. Error: ${error.message}`);
-            throw error; // Re-throw to propagate the error
+            throw error;
         }
     }
 
@@ -88,7 +90,7 @@ export class MarkdownService {
             return { body, attributes };
         } catch (error: any) {
             logger.error(`Failed to parse front matter. Error: ${error.message}`);
-            throw error; // Re-throw to propagate the error
+            throw error;
         }
     }
 
@@ -104,16 +106,10 @@ export class MarkdownService {
             ({ body, attributes } = this.parseFrontMatter(markdown));
         } catch (error: any) {
             logger.error(`Error during parseFrontMatter: ${error.message}`);
-            throw error; // Re-throw to propagate
+            throw error;
         }
 
-        let tokens: any[];
-        try {
-            tokens = marked.lexer(body);
-        } catch (error: any) {
-            logger.error(`Error during marked.lexer: ${error.message}`);
-            throw error; // Re-throw to propagate
-        }
+        const tokens = this.md.parse(body, {});
         
         let thumb_media_id: string | null = null;
 
@@ -121,12 +117,12 @@ export class MarkdownService {
         const baseName = path.basename(articlePath, path.extname(articlePath));
         const coverImagePath = path.join(dir, `${baseName}.png`);
 
+        // Cover Image Handling
         try {
-            await fs.access(coverImagePath); // Check if the file exists
+            await fs.access(coverImagePath);
             logger.info(`Found cover image for '${articlePath}' at '${coverImagePath}'`);
             const coverImageBuffer = await fs.readFile(coverImagePath);
             
-            // Calculate SHA1 of the original cover image
             const hash = crypto.createHash('sha1').update(coverImageBuffer).digest('hex');
             const material = this.dbService.getMaterial(coverImagePath);
             
@@ -141,10 +137,8 @@ export class MarkdownService {
             }
 
             if (needsUpload) {
-                // Resize to 1440x612 (2.35:1 aspect ratio) which is preferred by WeChat
-                // Use 'cover' strategy to crop if necessary
                 const thumbBuffer = await sharp(coverImageBuffer)
-                    .resize({ 
+                    .resize({
                         width: 1440, 
                         height: 612,
                         fit: 'cover'
@@ -157,116 +151,126 @@ export class MarkdownService {
             }
         } catch (error: any) {
             logger.warn(`No cover image found for '${articlePath}' at '${coverImagePath}', or failed to process it. A thumbnail will not be set. Error: ${error.message}`);
-            // Do not re-throw here, as missing cover image is not a critical error for article creation
         }
 
-        const firstH1Index = tokens.findIndex(t => t.type === 'heading' && t.depth === 1);
-        
+        // Remove H1
+        let firstH1Index = -1;
+        for (let i = 0; i < tokens.length; i++) {
+            if (tokens[i].type === 'heading_open' && tokens[i].tag === 'h1') {
+                firstH1Index = i;
+                break;
+            }
+        }
+
         if (firstH1Index !== -1) {
-            let potentialImageTokenIndex = firstH1Index + 1;
-            
-            // Skip space if present
-            if (tokens[potentialImageTokenIndex]?.type === 'space') {
-                potentialImageTokenIndex++;
-            }
-
-            const token = tokens[potentialImageTokenIndex];
-            let isCoverImage = false;
-
-            if (token?.type === 'image') {
-                isCoverImage = true;
-            } else if (token?.type === 'paragraph' && token.tokens && token.tokens.length === 1) {
-                const child = token.tokens[0];
-                if (child.type === 'image') {
-                    isCoverImage = true;
-                } else if (child.type === 'text') {
-                    // Handle broken image syntax (e.g. spaces in filename) parsed as text
-                    // Regex to match strictly ![]() pattern
-                    if (/^!\[.*\]\(.*\)$/.test(child.text.trim())) {
-                        isCoverImage = true;
-                    }
+            let h1CloseIndex = -1;
+            for (let i = firstH1Index + 1; i < tokens.length; i++) {
+                if (tokens[i].type === 'heading_close' && tokens[i].tag === 'h1') {
+                    h1CloseIndex = i;
+                    break;
                 }
             }
 
-            if (isCoverImage) {
-                const href = (token.type === 'image') 
-                    ? (token as Tokens.Image).href 
-                    : ((token.tokens![0] as any).href || (token.tokens![0] as Tokens.Text).text);
+            if (h1CloseIndex !== -1) {
+                let nextBlockIndex = h1CloseIndex + 1;
                 
-                logger.info(`Removing cover image '${href}' from article body.`);
-                
-                tokens.splice(potentialImageTokenIndex, 1);
-                
-                // If we skipped a space, remove it too so we don't have extra spacing
-                if (potentialImageTokenIndex > firstH1Index + 1) {
-                     tokens.splice(firstH1Index + 1, 1);
-                }
-            }
+                if (nextBlockIndex < tokens.length && tokens[nextBlockIndex].type === 'paragraph_open') {
+                    const inlineToken = tokens[nextBlockIndex + 1];
+                    if (inlineToken && inlineToken.type === 'inline' && inlineToken.children && inlineToken.children.length > 0) {
+                        const firstChild = inlineToken.children[0];
+                        let removeChild = false;
 
-            logger.info('Removing first H1 header from article body.');
-            tokens.splice(firstH1Index, 1);
-        }
+                        if (firstChild.type === 'image') {
+                             removeChild = true;
+                        }
+                        else if (firstChild.type === 'text') {
+                             const content = firstChild.content.trim();
+                             if (content.startsWith('![') && content.endsWith(')') && content.includes('](')) {
+                                 removeChild = true;
+                             }
+                        }
+                        
+                        if (removeChild) {
+                            const href = (firstChild.type === 'image') ? firstChild.attrGet('src') : firstChild.content;
+                            logger.info(`Removing cover image '${href}' from article body.`);
+                            
+                            inlineToken.children.shift(); 
+                            
+                            if (inlineToken.children.length > 0 && (inlineToken.children[0].type === 'softbreak' || inlineToken.children[0].type === 'hardbreak')) {
+                                inlineToken.children.shift();
+                            }
 
-        const imageTokens: Tokens.Image[] = [];
-        try {
-            marked.walkTokens(tokens, (token) => {
-                if (token.type === 'image') {
-                    imageTokens.push(token as Tokens.Image);
-                }
-            });
-        } catch (error: any) {
-            logger.error(`Error during marked.walkTokens: ${error.message}`);
-            throw error; // Re-throw to propagate
-        }
-
-        for (const token of imageTokens) {
-            try {
-                const {buffer, contentType, filename} = await this.getImageBuffer(token.href, articlePath);
-                
-                const hash = crypto.createHash('sha1').update(buffer).digest('hex');
-                let localPath = token.href;
-                if (!this.isUrl(token.href)) {
-                    localPath = path.resolve(path.dirname(articlePath), token.href);
-                }
-
-                const material = this.dbService.getMaterial(localPath);
-                let url = material?.url;
-                let needsUpload = true;
-
-                if (material && material.hash === hash && material.media_id) {
-                    const exists = await this.wechatService.checkMediaExists(material.media_id);
-                    if (exists) {
-                        needsUpload = false;
-                        logger.info(`Image '${filename}' exists on server and content unchanged. Using cached URL.`);
+                            const remainingText = inlineToken.children.map(c => c.content).join('').trim();
+                            if (remainingText === '') {
+                                tokens.splice(nextBlockIndex, 3);
+                            }
+                        }
                     }
                 }
 
-                if (needsUpload) {
-                    const result = await this.wechatService.addPermanentMaterial(buffer, 'image', filename, contentType);
-                    url = result.url;
-                    this.dbService.saveMaterial(localPath, hash, result.media_id, url);
-                }
+                logger.info('Removing first H1 header from article body.');
+                const deleteCount = h1CloseIndex - firstH1Index + 1;
+                tokens.splice(firstH1Index, deleteCount);
+            }
+        }
 
-                if (url) {
-                    token.href = url;
+        // Process Images in body
+        for (const token of tokens) {
+            if (token.type === 'inline' && token.children) {
+                for (const child of token.children) {
+                    if (child.type === 'image') {
+                        const src = child.attrGet('src');
+                        if (src) {
+                            try {
+                                const {buffer, contentType, filename} = await this.getImageBuffer(src, articlePath);
+                                
+                                const hash = crypto.createHash('sha1').update(buffer).digest('hex');
+                                let localPath = src;
+                                if (!this.isUrl(src)) {
+                                    localPath = path.resolve(path.dirname(articlePath), src);
+                                }
+
+                                const material = this.dbService.getMaterial(localPath);
+                                let url = material?.url;
+                                let needsUpload = true;
+
+                                if (material && material.hash === hash && material.media_id) {
+                                    const exists = await this.wechatService.checkMediaExists(material.media_id);
+                                    if (exists) {
+                                        needsUpload = false;
+                                        logger.info(`Image '${filename}' exists on server and content unchanged. Using cached URL.`);
+                                    }
+                                }
+
+                                if (needsUpload) {
+                                    const result = await this.wechatService.addPermanentMaterial(buffer, 'image', filename, contentType);
+                                    url = result.url;
+                                    this.dbService.saveMaterial(localPath, hash, result.media_id, url);
+                                }
+
+                                if (url) {
+                                    child.attrSet('src', url);
+                                }
+                            } catch (error: any) {
+                                logger.error(`Failed to process image '${src}'. Error: ${error.message}`);
+                                throw error;
+                            }
+                        }
+                    }
                 }
-            } catch (error: any) {
-                logger.error(`Failed to process image '${token.href}'. Error: ${error.message}`);
-                throw error;
             }
         }
 
         let html: string;
         try {
-            html = marked.parser(tokens);
+            html = this.md.renderer.render(tokens, this.md.options, {});
         } catch (error: any) {
-            logger.error(`Error during marked.parser: ${error.message}`);
-            throw error; // Re-throw to propagate
+            logger.error(`Error during markdown-it render: ${error.message}`);
+            throw error; 
         }
         
         const wrappedHtml = `<div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; padding: 10px;">${html}</div>`;
 
-        // Logic: digest -> cover.prompt -> defaultDigest
         let resolvedDigest = attributes['digest'] || attributes?.cover?.prompt || defaultDigest;
         
         if (resolvedDigest && resolvedDigest.length > 120) {

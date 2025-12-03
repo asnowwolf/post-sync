@@ -696,4 +696,4 @@ deleteAll
         }
     });
 
-program.parse(process.argv);
+await program.parseAsync(process.argv);

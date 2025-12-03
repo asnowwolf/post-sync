@@ -55,6 +55,7 @@ const mocks = vi.hoisted(() => {
         mockOption: vi.fn().mockReturnThis(),
         mockAction: vi.fn().mockReturnThis(),
         mockParse: vi.fn().mockReturnThis(),
+        mockParseAsync: vi.fn().mockResolvedValue(undefined),
 
         // Readline
         mockQuestion: vi.fn(),
@@ -147,6 +148,7 @@ vi.mock('commander', () => {
             description: mocks.mockDescription,
             version: mocks.mockVersion,
             parse: mocks.mockParse,
+            parseAsync: mocks.mockParseAsync,
             command: vi.fn().mockImplementation((subCommandName: string) => {
                 const subCmd = createCommandMock(subCommandName);
                 mocks.mockCommand(subCommandName); 

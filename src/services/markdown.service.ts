@@ -97,19 +97,19 @@ export class MarkdownService {
     private injectInlineStyles(tokens: any[]) {
         for (const token of tokens) {
             if (token.type === 'paragraph_open') {
-                token.attrSet('style', 'font-size: 16px; line-height: 1.8; margin-bottom: 15px; text-align: justify; letter-spacing: 0.5px; color: #3f3f3f;');
+                token.attrSet('style', 'font-size: 17px; line-height: 1.8; margin-bottom: 20px; text-align: justify; letter-spacing: 0.05em; color: #333;');
             } else if (token.type === 'heading_open') {
                 if (token.tag === 'h1') {
-                    token.attrSet('style', 'font-size: 22px; font-weight: bold; margin: 30px 0 15px; text-align: center; color: #333;');
+                    token.attrSet('style', 'font-size: 24px; font-weight: bold; margin: 30px 0 20px; text-align: center; color: #222;');
                 } else if (token.tag === 'h2') {
-                    token.attrSet('style', 'font-size: 18px; font-weight: bold; margin: 25px 0 10px; border-left: 4px solid #d4af37; padding-left: 10px; color: #333;');
+                    token.attrSet('style', 'font-size: 20px; font-weight: bold; margin: 25px 0 15px; border-bottom: 2px solid #e0b656; padding-bottom: 8px; color: #222;');
                 } else if (token.tag === 'h3') {
-                    token.attrSet('style', 'font-size: 16px; font-weight: bold; margin: 20px 0 10px; color: #333;');
+                    token.attrSet('style', 'font-size: 18px; font-weight: bold; margin: 20px 0 10px; color: #333;');
                 }
             } else if (token.type === 'blockquote_open') {
-                token.attrSet('style', 'border-left: 3px solid #d4af37; background-color: #fffcf5; padding: 15px; color: #666; margin: 20px 0; font-style: italic; border-radius: 2px;');
+                token.attrSet('style', 'border-left: 5px solid #d4af37; background-color: #fffaf0; padding: 20px; color: #555; margin: 25px 0; font-style: italic; border-radius: 4px;');
             } else if (token.type === 'fence') {
-                 token.attrSet('style', 'background-color: #f6f8fa; padding: 16px; border-radius: 6px; overflow: auto; font-family: monospace; font-size: 14px; margin-bottom: 15px; display: block;');
+                 token.attrSet('style', 'background-color: #f8f8f8; padding: 18px; border-radius: 8px; overflow: auto; font-family: \'SFMono-Regular\', Consolas, \'Liberation Mono\', Menlo, Courier, monospace; font-size: 15px; margin-bottom: 20px; display: block;');
             }
         }
     }
@@ -134,12 +134,11 @@ export class MarkdownService {
                 token.tag = 'div';
             } else if (token.type === 'list_item_open') {
                 token.tag = 'div';
-                token.attrSet('style', 'margin-bottom: 5px;');
+                token.attrSet('style', 'margin-bottom: 5px;'); // Item container style
             } else if (token.type === 'list_item_close') {
                 token.tag = 'div';
             } else if (token.type === 'paragraph_open') {
                 if (listStack.length > 0) {
-                    // Check if this is the first paragraph of the list item
                     if (i > 0 && tokens[i-1].type === 'list_item_open') {
                          const ctx = listStack[listStack.length - 1];
                          let prefix = '';
@@ -173,8 +172,8 @@ export class MarkdownService {
                          }
                          
                          const indent = (ctx.level + 1) * 20; 
-                         token.attrSet('style', `font-size: 16px; line-height: 1.8; color: #3f3f3f; margin: 0 0 5px ${indent}px; text-indent: -20px; padding-left: 0;`);
-                         token.hidden = false; // Force rendering
+                         token.attrSet('style', `font-size: 17px; line-height: 1.8; color: #333; margin: 0 0 0 ${indent}px; text-indent: -20px; padding-left: 0;`);
+                         token.hidden = false; 
                     }
                 }
             }
@@ -274,7 +273,7 @@ export class MarkdownService {
                 for (const child of token.children) {
                     if (child.type === 'image') {
                         // Inject Image Style (New Beautified Style)
-                        child.attrSet('style', 'max-width: 100%; height: auto; border-radius: 6px; display: block; margin: 20px auto; box-shadow: 0 4px 10px rgba(0,0,0,0.1);');
+                        child.attrSet('style', 'max-width: 100%; height: auto; border-radius: 8px; display: block; margin: 25px auto; box-shadow: 0 5px 15px rgba(0,0,0,0.15);');
                         
                         const src = child.attrGet('src');
                         if (src) {
@@ -326,7 +325,7 @@ export class MarkdownService {
             throw error; 
         }
         
-        const wrappedHtml = `<div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Georgia, 'Times New Roman', serif; font-size: 17px; line-height: 1.8; color: #333; letter-spacing: 0.05em; padding: 20px;">${html}</div>`;
+        const wrappedHtml = `<div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Georgia, 'Times New Roman', serif; font-size: 17px; line-height: 1.8; color: #333; letter-spacing: 0.05em; padding: 25px;">${html}</div>`;
 
         let resolvedDigest = attributes['digest'] || attributes?.cover?.prompt || defaultDigest;
         

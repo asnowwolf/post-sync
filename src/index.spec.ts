@@ -257,7 +257,7 @@ describe('CLI', () => {
             expect(mocks.mockCreateDraft).toHaveBeenCalledWith(expect.objectContaining({
                 title: 'article',
             }));
-            expect(mockExit).not.toHaveBeenCalled();
+            expect(mockExit).toHaveBeenCalledWith(0);
         });
 
         it('should skip if article is unchanged and draft exists on server', async () => {
@@ -323,7 +323,7 @@ describe('CLI', () => {
             expect(mocks.mockConvert).toHaveBeenCalled();
             expect(mocks.mockFindArticleByPath).not.toHaveBeenCalled();
             expect(mocks.mockCreateDraft).not.toHaveBeenCalled();
-            expect(mockExit).not.toHaveBeenCalled();
+            expect(mockExit).toHaveBeenCalledWith(0);
         });
     });
 

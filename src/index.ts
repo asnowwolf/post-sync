@@ -697,3 +697,4 @@ deleteAll
     });
 
 await program.parseAsync(process.argv);
+process.exit(0);

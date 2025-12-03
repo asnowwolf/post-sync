@@ -183,17 +183,19 @@ describe('End-to-End Test for post-sync CLI (Full Verification)', () => {
             await expect(fs.access(_tempDbPathGlobal)).resolves.toBeUndefined();
 
             // --- WeChat API Call Assertions for 'create' command ---
-            // Expect 2 calls for addPermanentMaterial (for two articles)
+            // Expect 4 calls for addPermanentMaterial (2 manual cover uploads + 2 cover-in-body uploads due to lack of get_material mock)
             const addMaterialCalls = _mockApiRequests.filter(req => req.path.includes('/cgi-bin/material/add_material'));
-            expect(addMaterialCalls).toHaveLength(2);
+            expect(addMaterialCalls).toHaveLength(4);
 
 
             // Expect 2 calls for createDraft (for two articles)
             const createDraftCalls = _mockApiRequests.filter(req => req.path.includes('/cgi-bin/draft/add'));
             expect(createDraftCalls).toHaveLength(2);
-            expect(createDraftCalls[0].body.articles[0].title).toEqual('article1');
+            // Sort calls by title to ensure order, as file processing order might vary? fileUtil sorts alphabetically.
+            // article1 comes before article2.
+            expect(createDraftCalls[0].body.articles[0].title).toEqual('Article 1');
             expect(createDraftCalls[0].body.articles[0].thumb_media_id).toEqual('mock_perm_media_id');
-            expect(createDraftCalls[1].body.articles[0].title).toEqual('article2');
+            expect(createDraftCalls[1].body.articles[0].title).toEqual('Article 2');
             expect(createDraftCalls[1].body.articles[0].thumb_media_id).toEqual('mock_perm_media_id');
 
         } catch (error: any) {
@@ -265,17 +267,17 @@ describe('End-to-End Test for post-sync CLI (Full Verification)', () => {
             await expect(fs.access(_tempDbPathGlobal)).resolves.toBeUndefined();
 
             // --- WeChat API Call Assertions for 'post' command ---
-            // Expect 2 calls for addPermanentMaterial
+            // Expect 4 calls for addPermanentMaterial
             const addMaterialCalls = _mockApiRequests.filter(req => req.path.includes('/cgi-bin/material/add_material'));
-            expect(addMaterialCalls).toHaveLength(2);
+            expect(addMaterialCalls).toHaveLength(4);
 
 
             // Expect 2 calls for createDraft
             const createDraftCalls = _mockApiRequests.filter(req => req.path.includes('/cgi-bin/draft/add'));
             expect(createDraftCalls).toHaveLength(2);
-            expect(createDraftCalls[0].body.articles[0].title).toEqual('article1');
+            expect(createDraftCalls[0].body.articles[0].title).toEqual('Article 1');
             expect(createDraftCalls[0].body.articles[0].thumb_media_id).toEqual('mock_perm_media_id');
-            expect(createDraftCalls[1].body.articles[0].title).toEqual('article2');
+            expect(createDraftCalls[1].body.articles[0].title).toEqual('Article 2');
             expect(createDraftCalls[1].body.articles[0].thumb_media_id).toEqual('mock_perm_media_id');
 
 

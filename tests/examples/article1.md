@@ -1,1 +1,5 @@
-# Article 1\n![cover](./article1.png)\nContent 1.
+# Article 1
+
+![cover](./article1.png)
+
+Content 1.

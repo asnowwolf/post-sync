@@ -9,6 +9,7 @@
   },
   "scripts": {
     "start": "node --loader ts-node/esm src/index.ts",
+    "debug": "node --loader ts-node/esm src/index.ts create tests/complex-examples/complex-article-1.md",
     "build": "tsc",
     "test": "vitest run"
   },

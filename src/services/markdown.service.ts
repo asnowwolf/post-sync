@@ -96,26 +96,87 @@ export class MarkdownService {
 
     private injectInlineStyles(tokens: any[]) {
         for (const token of tokens) {
-            if (token.type === 'bullet_list_open') {
-                token.attrSet('style', 'list-style-type: disc; padding-left: 20px; margin-bottom: 10px;');
-            } else if (token.type === 'ordered_list_open') {
-                token.attrSet('style', 'list-style-type: decimal; padding-left: 20px; margin-bottom: 10px;');
-            } else if (token.type === 'list_item_open') {
-                token.attrSet('style', 'line-height: 1.6; margin-bottom: 5px;');
-            } else if (token.type === 'paragraph_open') {
-                token.attrSet('style', 'font-size: 16px; line-height: 1.6; margin-bottom: 15px; text-align: justify;');
+            if (token.type === 'paragraph_open') {
+                token.attrSet('style', 'font-size: 16px; line-height: 1.8; margin-bottom: 15px; text-align: justify; letter-spacing: 0.5px; color: #3f3f3f;');
             } else if (token.type === 'heading_open') {
                 if (token.tag === 'h1') {
-                    token.attrSet('style', 'font-size: 24px; font-weight: bold; margin-top: 30px; margin-bottom: 15px; text-align: center;');
+                    token.attrSet('style', 'font-size: 22px; font-weight: bold; margin: 30px 0 15px; text-align: center; color: #333;');
                 } else if (token.tag === 'h2') {
-                    token.attrSet('style', 'font-size: 20px; font-weight: bold; margin-top: 25px; margin-bottom: 15px; border-bottom: 1px solid #eaecef; padding-bottom: 5px;');
+                    token.attrSet('style', 'font-size: 18px; font-weight: bold; margin: 25px 0 10px; border-left: 4px solid #d4af37; padding-left: 10px; color: #333;');
                 } else if (token.tag === 'h3') {
-                    token.attrSet('style', 'font-size: 18px; font-weight: bold; margin-top: 20px; margin-bottom: 10px;');
+                    token.attrSet('style', 'font-size: 16px; font-weight: bold; margin: 20px 0 10px; color: #333;');
                 }
             } else if (token.type === 'blockquote_open') {
-                token.attrSet('style', 'border-left: 4px solid #dfe2e5; padding: 10px 15px; color: #6a737d; background-color: #f8f9fa; margin-bottom: 15px; border-radius: 2px;');
+                token.attrSet('style', 'border-left: 3px solid #d4af37; background-color: #fffcf5; padding: 15px; color: #666; margin: 20px 0; font-style: italic; border-radius: 2px;');
             } else if (token.type === 'fence') {
                  token.attrSet('style', 'background-color: #f6f8fa; padding: 16px; border-radius: 6px; overflow: auto; font-family: monospace; font-size: 14px; margin-bottom: 15px; display: block;');
+            }
+        }
+    }
+
+    private transformListTokens(tokens: any[]) {
+        const listStack: { type: 'ul' | 'ol', count: number, level: number }[] = [];
+        
+        for (let i = 0; i < tokens.length; i++) {
+            const token = tokens[i];
+            
+            if (token.type === 'bullet_list_open') {
+                listStack.push({ type: 'ul', count: 0, level: listStack.length });
+                token.tag = 'div';
+                token.attrSet('style', 'margin-bottom: 15px;'); 
+            } else if (token.type === 'ordered_list_open') {
+                const start = token.attrGet('start');
+                listStack.push({ type: 'ol', count: start ? parseInt(start, 10) : 1, level: listStack.length });
+                token.tag = 'div';
+                token.attrSet('style', 'margin-bottom: 15px;');
+            } else if (token.type === 'bullet_list_close' || token.type === 'ordered_list_close') {
+                listStack.pop();
+                token.tag = 'div';
+            } else if (token.type === 'list_item_open') {
+                token.tag = 'div';
+                token.attrSet('style', 'margin-bottom: 5px;');
+            } else if (token.type === 'list_item_close') {
+                token.tag = 'div';
+            } else if (token.type === 'paragraph_open') {
+                if (listStack.length > 0) {
+                    // Check if this is the first paragraph of the list item
+                    if (i > 0 && tokens[i-1].type === 'list_item_open') {
+                         const ctx = listStack[listStack.length - 1];
+                         let prefix = '';
+                         if (ctx.type === 'ul') {
+                             prefix = '•  '; 
+                         } else {
+                             prefix = `${ctx.count}. `;
+                             ctx.count++;
+                         }
+                         
+                         if (i + 1 < tokens.length && tokens[i+1].type === 'inline') {
+                             const inlineToken = tokens[i+1];
+                             if (!inlineToken.children) inlineToken.children = [];
+                             
+                             const prefixToken = {
+                                 type: 'text',
+                                 tag: '',
+                                 attrs: null,
+                                 map: null,
+                                 nesting: 0,
+                                 level: 0,
+                                 children: null,
+                                 content: prefix,
+                                 markup: '',
+                                 info: '',
+                                 meta: null,
+                                 block: false,
+                                 hidden: false
+                             };
+                             inlineToken.children.unshift(prefixToken);
+                         }
+                         
+                         const indent = (ctx.level + 1) * 20; 
+                         token.attrSet('style', `font-size: 16px; line-height: 1.8; color: #3f3f3f; margin: 0 0 5px ${indent}px; text-indent: -20px; padding-left: 0;`);
+                         token.hidden = false; // Force rendering
+                    }
+                }
             }
         }
     }
@@ -201,16 +262,19 @@ export class MarkdownService {
             }
         }
 
-        // Inject Inline Styles
+        // Inject Inline Styles (Generic)
         this.injectInlineStyles(tokens);
+
+        // Transform Lists (Simulate with div/p) - Overwrites paragraph styles in lists
+        this.transformListTokens(tokens);
 
         // Process Images in body
         for (const token of tokens) {
             if (token.type === 'inline' && token.children) {
                 for (const child of token.children) {
                     if (child.type === 'image') {
-                        // Inject Image Style
-                        child.attrSet('style', 'max-width: 100%; height: auto; border-radius: 4px; display: block; margin: 10px auto;');
+                        // Inject Image Style (New Beautified Style)
+                        child.attrSet('style', 'max-width: 100%; height: auto; border-radius: 6px; display: block; margin: 20px auto; box-shadow: 0 4px 10px rgba(0,0,0,0.1);');
                         
                         const src = child.attrGet('src');
                         if (src) {
@@ -262,7 +326,7 @@ export class MarkdownService {
             throw error; 
         }
         
-        const wrappedHtml = `<div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; padding: 10px;">${html}</div>`;
+        const wrappedHtml = `<div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Georgia, 'Times New Roman', serif; font-size: 17px; line-height: 1.8; color: #333; letter-spacing: 0.05em; padding: 20px;">${html}</div>`;
 
         let resolvedDigest = attributes['digest'] || attributes?.cover?.prompt || defaultDigest;
         

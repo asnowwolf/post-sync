@@ -1,43 +1,36 @@
-<div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; padding: 10px;"><h2 style="font-size: 20px; font-weight: bold; margin-top: 25px; margin-bottom: 15px; border-bottom: 1px solid #eaecef; padding-bottom: 5px;">1. 介绍</h2>
-<p style="font-size: 16px; line-height: 1.6; margin-bottom: 15px; text-align: justify;">这篇文章用于测试 <code>post-sync</code> 工具的格式支持能力。</p>
-<h2 style="font-size: 20px; font-weight: bold; margin-top: 25px; margin-bottom: 15px; border-bottom: 1px solid #eaecef; padding-bottom: 5px;">2. 格式测试</h2>
-<h3 style="font-size: 18px; font-weight: bold; margin-top: 20px; margin-bottom: 10px;">2.1 列表</h3>
-<p style="font-size: 16px; line-height: 1.6; margin-bottom: 15px; text-align: justify;">无序列表：</p>
-<ul style="list-style-type: disc; padding-left: 20px; margin-bottom: 10px;">
-<li style="line-height: 1.6; margin-bottom: 5px;">项目一</li>
-<li style="line-height: 1.6; margin-bottom: 5px;">项目二
-<ul style="list-style-type: disc; padding-left: 20px; margin-bottom: 10px;">
-<li style="line-height: 1.6; margin-bottom: 5px;">子项目 A</li>
-<li style="line-height: 1.6; margin-bottom: 5px;">子项目 B</li>
-</ul>
-</li>
-</ul>
-<p style="font-size: 16px; line-height: 1.6; margin-bottom: 15px; text-align: justify;">有序列表：</p>
-<ol style="list-style-type: decimal; padding-left: 20px; margin-bottom: 10px;">
-<li style="line-height: 1.6; margin-bottom: 5px;">第一步</li>
-<li style="line-height: 1.6; margin-bottom: 5px;">第二步</li>
-<li style="line-height: 1.6; margin-bottom: 5px;">第三步</li>
-</ol>
-<h3 style="font-size: 18px; font-weight: bold; margin-top: 20px; margin-bottom: 10px;">2.2 引用</h3>
-<blockquote style="border-left: 4px solid #dfe2e5; padding: 10px 15px; color: #6a737d; background-color: #f8f9fa; margin-bottom: 15px; border-radius: 2px;">
-<p style="font-size: 16px; line-height: 1.6; margin-bottom: 15px; text-align: justify;">这是一个引用块。
+<div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Georgia, 'Times New Roman', serif; font-size: 17px; line-height: 1.8; color: #333; letter-spacing: 0.05em; padding: 20px;"><h2 style="font-size: 18px; font-weight: bold; margin: 25px 0 10px; border-left: 4px solid #d4af37; padding-left: 10px; color: #333;">1. 介绍</h2>
+<p style="font-size: 16px; line-height: 1.8; margin-bottom: 15px; text-align: justify; letter-spacing: 0.5px; color: #3f3f3f;">这篇文章用于测试 <code>post-sync</code> 工具的格式支持能力。</p>
+<h2 style="font-size: 18px; font-weight: bold; margin: 25px 0 10px; border-left: 4px solid #d4af37; padding-left: 10px; color: #333;">2. 格式测试</h2>
+<h3 style="font-size: 16px; font-weight: bold; margin: 20px 0 10px; color: #333;">2.1 列表</h3>
+<p style="font-size: 16px; line-height: 1.8; margin-bottom: 15px; text-align: justify; letter-spacing: 0.5px; color: #3f3f3f;">有序列表：</p>
+<div style="margin-bottom: 15px;">
+<div style="margin-bottom: 5px;">
+<p style="font-size: 16px; line-height: 1.8; color: #3f3f3f; margin: 0 0 5px 20px; text-indent: -20px; padding-left: 0;">1. 第一步</div>
+<div style="margin-bottom: 5px;">
+<p style="font-size: 16px; line-height: 1.8; color: #3f3f3f; margin: 0 0 5px 20px; text-indent: -20px; padding-left: 0;">2. 第二步</div>
+<div style="margin-bottom: 5px;">
+<p style="font-size: 16px; line-height: 1.8; color: #3f3f3f; margin: 0 0 5px 20px; text-indent: -20px; padding-left: 0;">3. 第三步</div>
+</div>
+<h3 style="font-size: 16px; font-weight: bold; margin: 20px 0 10px; color: #333;">2.2 引用</h3>
+<blockquote style="border-left: 3px solid #d4af37; background-color: #fffcf5; padding: 15px; color: #666; margin: 20px 0; font-style: italic; border-radius: 2px;">
+<p style="font-size: 16px; line-height: 1.8; margin-bottom: 15px; text-align: justify; letter-spacing: 0.5px; color: #3f3f3f;">这是一个引用块。
 可以包含多行。</p>
-<p style="font-size: 16px; line-height: 1.6; margin-bottom: 15px; text-align: justify;">甚至包含空行。</p>
+<p style="font-size: 16px; line-height: 1.8; margin-bottom: 15px; text-align: justify; letter-spacing: 0.5px; color: #3f3f3f;">甚至包含空行。</p>
 </blockquote>
-<h3 style="font-size: 18px; font-weight: bold; margin-top: 20px; margin-bottom: 10px;">2.3 代码</h3>
-<p style="font-size: 16px; line-height: 1.6; margin-bottom: 15px; text-align: justify;">行内代码：<code>console.log('Hello World');</code></p>
-<p style="font-size: 16px; line-height: 1.6; margin-bottom: 15px; text-align: justify;">代码块：</p>
+<h3 style="font-size: 16px; font-weight: bold; margin: 20px 0 10px; color: #333;">2.3 代码</h3>
+<p style="font-size: 16px; line-height: 1.8; margin-bottom: 15px; text-align: justify; letter-spacing: 0.5px; color: #3f3f3f;">行内代码：<code>console.log('Hello World');</code></p>
+<p style="font-size: 16px; line-height: 1.8; margin-bottom: 15px; text-align: justify; letter-spacing: 0.5px; color: #3f3f3f;">代码块：</p>
 <pre><code style="background-color: #f6f8fa; padding: 16px; border-radius: 6px; overflow: auto; font-family: monospace; font-size: 14px; margin-bottom: 15px; display: block;" class="language-typescript">function hello(name: string) {
     console.log(`Hello, ${name}!`);
 }
 </code></pre>
-<h3 style="font-size: 18px; font-weight: bold; margin-top: 20px; margin-bottom: 10px;">2.4 图片</h3>
-<p style="font-size: 16px; line-height: 1.6; margin-bottom: 15px; text-align: justify;"><img src="http://mock.url/image.jpg" alt="示例图片" style="max-width: 100%; height: auto; border-radius: 4px; display: block; margin: 10px auto;"></p>
-<p style="font-size: 16px; line-height: 1.6; margin-bottom: 15px; text-align: justify;">（注：这是一个远程图片占位符）</p>
-<h3 style="font-size: 18px; font-weight: bold; margin-top: 20px; margin-bottom: 10px;">2.5 强调</h3>
-<p style="font-size: 16px; line-height: 1.6; margin-bottom: 15px; text-align: justify;"><em>斜体文本</em>
+<h3 style="font-size: 16px; font-weight: bold; margin: 20px 0 10px; color: #333;">2.4 图片</h3>
+<p style="font-size: 16px; line-height: 1.8; margin-bottom: 15px; text-align: justify; letter-spacing: 0.5px; color: #3f3f3f;"><img src="http://mock.url/image.jpg" alt="示例图片" style="max-width: 100%; height: auto; border-radius: 6px; display: block; margin: 20px auto; box-shadow: 0 4px 10px rgba(0,0,0,0.1);"></p>
+<p style="font-size: 16px; line-height: 1.8; margin-bottom: 15px; text-align: justify; letter-spacing: 0.5px; color: #3f3f3f;">（注：这是一个远程图片占位符）</p>
+<h3 style="font-size: 16px; font-weight: bold; margin: 20px 0 10px; color: #333;">2.5 强调</h3>
+<p style="font-size: 16px; line-height: 1.8; margin-bottom: 15px; text-align: justify; letter-spacing: 0.5px; color: #3f3f3f;"><em>斜体文本</em>
 <strong>粗体文本</strong>
 <em><strong>粗斜体文本</strong></em></p>
-<h2 style="font-size: 20px; font-weight: bold; margin-top: 25px; margin-bottom: 15px; border-bottom: 1px solid #eaecef; padding-bottom: 5px;">3. 结论</h2>
-<p style="font-size: 16px; line-height: 1.6; margin-bottom: 15px; text-align: justify;">测试结束。</p>
+<h2 style="font-size: 18px; font-weight: bold; margin: 25px 0 10px; border-left: 4px solid #d4af37; padding-left: 10px; color: #333;">3. 结论</h2>
+<p style="font-size: 16px; line-height: 1.8; margin-bottom: 15px; text-align: justify; letter-spacing: 0.5px; color: #3f3f3f;">测试结束。</p>
 </div>

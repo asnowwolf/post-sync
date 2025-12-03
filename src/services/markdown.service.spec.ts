@@ -60,7 +60,7 @@ describe('MarkdownService', () => {
         markdownService = new MarkdownService(mockWeChatService, mockDbService);
         (sharp as unknown as ReturnType<typeof vi.fn>).mockReturnValue(mockSharpInstance);
 
-        vi.mocked(fs.access).mockRejectedValue(new Error('File not found')); 
+        vi.mocked(fs.access).mockResolvedValue(undefined); 
         vi.mocked(fs.readFile).mockResolvedValue(createMockImageBuffer('png')); 
         vi.mocked(fileUtil.getFileHash).mockResolvedValue('mock_hash');
         mockWeChatService.checkMediaExists.mockResolvedValue(true); 
@@ -71,29 +71,29 @@ describe('MarkdownService', () => {
             const articlePath = '/test/path/article-fm.md';
             const markdown = '---\ndigest: This is a summary.\n---\n# Title\nSome other content.';
             
-            vi.mocked(fs.access).mockResolvedValue(undefined); 
             mockWeChatService.addPermanentMaterial = vi.fn().mockResolvedValue({ media_id: 'thumb_1', url: 'url' });
             
             const { digest, html } = await markdownService.convert(markdown, articlePath);
             
             expect(digest).toBe('This is a summary.');
-            expect(html).toContain('Title'); 
+            expect(html).toMatch(/<h1.*>Title<\/h1>/); // H1 should be present
             expect(html).toContain('Some other content');
         });
 
-        // ... title extraction tests (unchanged logic) ...
         it('should extract title from frontmatter', async () => {
             const articlePath = '/test/path/article-title-fm.md';
             const markdown = '---\ntitle: My Custom Title\n---\n# H1 Title\nContent.';
-            const { title } = await markdownService.convert(markdown, articlePath);
+            const { title, html } = await markdownService.convert(markdown, articlePath);
             expect(title).toBe('My Custom Title');
+            expect(html).toMatch(/<h1.*>H1 Title<\/h1>/);
         });
 
         it('should extract title from unique H1 if no frontmatter title', async () => {
             const articlePath = '/test/path/article-h1-title.md';
             const markdown = '# My Unique H1\nContent.';
-            const { title } = await markdownService.convert(markdown, articlePath);
+            const { title, html } = await markdownService.convert(markdown, articlePath);
             expect(title).toBe('My Unique H1');
+            expect(html).toMatch(/<h1.*>My Unique H1<\/h1>/);
         });
 
         it('should NOT extract title if multiple H1s exist', async () => {
@@ -103,16 +103,58 @@ describe('MarkdownService', () => {
             expect(title).toBeUndefined();
         });
 
+        it('should use default digest if no digest and no cover.prompt in frontmatter', async () => {
+            const articlePath = '/test/path/article-no-digest.md';
+            const markdown = '---\nkey: value\n---\n# Title\nSome other content.';
+            
+            const { digest } = await markdownService.convert(markdown, articlePath, undefined, 'default_cover_prompt');
+            expect(digest).toBe('default_cover_prompt');
+        });
+
+        it('should use cover.prompt as digest if digest is missing in frontmatter', async () => {
+            const articlePath = '/test/path/article-cover-prompt.md';
+            const markdown = '---\ncover:\n  prompt: "This is the prompt digest"\n---\n# Title\nContent';
+            
+            const { digest } = await markdownService.convert(markdown, articlePath, undefined, 'default');
+            expect(digest).toBe('This is the prompt digest');
+        });
+
+        it('should use author from frontmatter', async () => {
+            const articlePath = '/test/path/article-author-fm.md';
+            const markdown = '---\nauthor: Frontmatter Author\n---\n# Title\nSome content.';
+            
+            const { author } = await markdownService.convert(markdown, articlePath, 'Default Config Author');
+            expect(author).toBe('Frontmatter Author');
+        });
+
+        it('should use default author from config if no author in frontmatter', async () => {
+            const articlePath = '/test/path/article-no-author-fm.md';
+            const markdown = '# Title\nSome content.';
+            
+            const { author } = await markdownService.convert(markdown, articlePath, 'Default Config Author');
+            expect(author).toBe('Default Config Author');
+        });
+
+        it('should have undefined author if neither frontmatter nor default author is provided', async () => {
+            const articlePath = '/test/path/article-no-author.md';
+            const markdown = '# Title\nSome content.';
+            
+            const { author } = await markdownService.convert(markdown, articlePath);
+            expect(author).toBeUndefined();
+        });
+
         it('should process images and retain H1/cover in body with styles', async () => {
             const articlePath = '/test/path/article-images.md';
             const markdown = '# Title\n![cover](./cover.png)\nSome other content.\n![body](./body.png)';
             
-            vi.mocked(fs.access).mockResolvedValue(undefined); 
-            vi.mocked(fs.readFile).mockImplementation((p: string) => {
-                if (p.includes('article-images.png')) return Promise.resolve(createMockImageBuffer('png'));
-                if (p.includes('cover.png')) return Promise.resolve(createMockImageBuffer('png'));
-                if (p.includes('body.png')) return Promise.resolve(createMockImageBuffer('png'));
-                return Promise.reject(new Error('File not found: ' + p));
+            // Mock fs.readFile to support multiple files including the inferred cover
+            vi.mocked(fs.readFile).mockImplementation((p: string | Buffer | URL | number) => {
+                const pathStr = String(p);
+                if (pathStr.includes('article-images.png')) return Promise.resolve(createMockImageBuffer('png'));
+                if (pathStr.includes('cover.png')) return Promise.resolve(createMockImageBuffer('png'));
+                if (pathStr.includes('body.png')) return Promise.resolve(createMockImageBuffer('png'));
+                // Fallback for other reads if any
+                return Promise.resolve(createMockImageBuffer('png')); 
             });
             
             mockDbService.getMaterial.mockReturnValue(undefined);
@@ -129,9 +171,41 @@ describe('MarkdownService', () => {
 
             expect(thumb_media_id).toBe('cover_media_id');
             expect(title).toBe('Title');
-            // Check for styles
-            expect(html).toContain('style="font-size: 24px;'); // H1 style
-            expect(html).toContain('style="max-width: 100%;'); // Image style
+            expect(html).toContain('style="font-size: 22px;'); 
+            expect(html).toContain('style="max-width: 100%;'); 
+            expect(mockWeChatService.addPermanentMaterial).toHaveBeenCalledTimes(3);
+        });
+
+        it('should return null thumb_media_id if cover image upload fails', async () => {
+            const articlePath = '/test/path/article-upload-fail.md';
+            const markdown = '# Title\nContent';
+            
+            // Ensure readFile works for cover image check
+            vi.mocked(fs.readFile).mockResolvedValue(createMockImageBuffer('png'));
+            
+            mockDbService.getMaterial.mockReturnValue(undefined);
+            mockWeChatService.checkMediaExists.mockResolvedValue(false);
+
+            mockWeChatService.addPermanentMaterial = vi.fn().mockRejectedValue(new Error('Upload failed'));
+
+            const { thumb_media_id, html } = await markdownService.convert(markdown, articlePath);
+
+            expect(thumb_media_id).toBeNull();
+            expect(html).toMatch(/<h1.*>Title<\/h1>/);
+        });
+
+        it('should throw error when image upload fails', async () => {
+            const articlePath = '/test/path/article-upload-fail-body.md';
+            const markdown = '![](./fail.png)';
+            
+            vi.mocked(fs.access).mockRejectedValue(new Error('No cover')); 
+            vi.mocked(fs.readFile).mockResolvedValue(createMockImageBuffer('png'));
+            
+            mockDbService.getMaterial.mockReturnValue(undefined);
+            mockWeChatService.checkMediaExists.mockResolvedValue(false);
+            mockWeChatService.addPermanentMaterial = vi.fn().mockRejectedValue(new Error('Upload failed'));
+
+            await expect(markdownService.convert(markdown, articlePath)).rejects.toThrow('Upload failed');
         });
     });
 
@@ -142,26 +216,27 @@ describe('MarkdownService', () => {
             vi.mocked(fs.access).mockRejectedValue(new Error('No cover')); 
         });
 
-        it('should render lists with correct inline styles', async () => {
+        it('should render lists with simulation (div/p) and hanging indent', async () => {
             const markdown = '\n- Item 1\n- Item 2\n  - Subitem 2.1\n';
             const { html } = await markdownService.convert(markdown, articlePath);
-            expect(html).toContain('padding-left: 20px;'); // UL style
-            expect(html).toContain('list-style-type: disc;'); // UL style
-            expect(html).toContain('line-height: 1.6;'); // LI style
+            expect(html).not.toContain('<ul>'); 
+            expect(html).toContain('•  '); 
+            expect(html).toContain('text-indent: -20px;'); 
         });
 
-        it('should render ordered lists with correct inline styles', async () => {
+        it('should render ordered lists with simulation (div/p) and hanging indent', async () => {
             const markdown = '\n1. First\n2. Second\n';
             const { html } = await markdownService.convert(markdown, articlePath);
-            expect(html).toContain('padding-left: 20px;'); // OL style
-            expect(html).toContain('list-style-type: decimal;'); // OL style
+            expect(html).not.toContain('<ol>'); 
+            expect(html).toContain('1. '); 
+            expect(html).toContain('text-indent: -20px;');
         });
 
         it('should render blockquotes with correct inline styles', async () => {
             const markdown = '> This is a quote';
             const { html } = await markdownService.convert(markdown, articlePath);
-            expect(html).toContain('border-left: 4px solid'); 
-            expect(html).toContain('background-color: #f8f9fa;'); 
+            expect(html).toContain('border-left: 3px solid'); 
+            expect(html).toContain('background-color: #fffcf5;'); 
         });
 
         it('should render fenced code blocks with correct inline styles', async () => {
@@ -175,7 +250,7 @@ describe('MarkdownService', () => {
             const markdown = 'Just a paragraph.';
             const { html } = await markdownService.convert(markdown, articlePath);
             expect(html).toContain('font-size: 16px;');
-            expect(html).toContain('line-height: 1.6;');
+            expect(html).toContain('line-height: 1.8;');
             expect(html).toContain('text-align: justify;');
         });
     });

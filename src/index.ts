@@ -90,14 +90,14 @@ program
                     logger.info(`Processing '${file}'...`);
 
                     const markdownContent = await fs.promises.readFile(file, 'utf-8');
-                    const {html, thumb_media_id, digest, author} = await markdownService.convert(markdownContent, file, currentConfig.author);
+                    const {html, thumb_media_id, digest, author, title: extractedTitle} = await markdownService.convert(markdownContent, file, currentConfig.author);
 
                     if (!thumb_media_id) {
                         logger.error(`Could not generate a thumbnail for '${file}'. Skipping draft creation/update.`);
                         continue;
                     }
 
-                    const title = path.basename(file, '.md');
+                    const title = extractedTitle || path.basename(file, '.md');
                     const contentToHash = JSON.stringify({ title, html, digest, author, thumb_media_id });
                     const hash = crypto.createHash('sha1').update(contentToHash).digest('hex');
 
@@ -290,14 +290,14 @@ program
                     logger.info(`Processing '${file}'...`);
 
                     const markdownContent = await fs.promises.readFile(file, 'utf-8');
-                    const { html, thumb_media_id, digest, author } = await markdownService.convert(markdownContent, file, currentConfig.author);
+                    const { html, thumb_media_id, digest, author, title: extractedTitle } = await markdownService.convert(markdownContent, file, currentConfig.author);
 
                     if (!thumb_media_id) {
                         logger.error(`Could not generate a thumbnail for '${file}'. Skipping draft creation/update.`);
                         continue;
                     }
 
-                    const title = path.basename(file, '.md');
+                    const title = extractedTitle || path.basename(file, '.md');
                     const contentToHash = JSON.stringify({ title, html, digest, author, thumb_media_id });
                     const hash = crypto.createHash('sha1').update(contentToHash).digest('hex');
 

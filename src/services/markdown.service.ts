@@ -99,6 +99,7 @@ export class MarkdownService {
         thumb_media_id: string | null;
         digest?: string;
         author?: string;
+        title?: string;
     }> {
         let body: string;
         let attributes: any;
@@ -153,66 +154,32 @@ export class MarkdownService {
             logger.warn(`No cover image found for '${articlePath}' at '${coverImagePath}', or failed to process it. A thumbnail will not be set. Error: ${error.message}`);
         }
 
-        // Remove H1
-        let firstH1Index = -1;
-        for (let i = 0; i < tokens.length; i++) {
-            if (tokens[i].type === 'heading_open' && tokens[i].tag === 'h1') {
-                firstH1Index = i;
-                break;
-            }
-        }
+        // Title Extraction Logic
+        // Priority 1: Frontmatter title
+        let title: string | undefined = attributes['title'];
 
-        if (firstH1Index !== -1) {
-            let h1CloseIndex = -1;
-            for (let i = firstH1Index + 1; i < tokens.length; i++) {
-                if (tokens[i].type === 'heading_close' && tokens[i].tag === 'h1') {
-                    h1CloseIndex = i;
-                    break;
-                }
-            }
-
-            if (h1CloseIndex !== -1) {
-                let nextBlockIndex = h1CloseIndex + 1;
-                
-                if (nextBlockIndex < tokens.length && tokens[nextBlockIndex].type === 'paragraph_open') {
-                    const inlineToken = tokens[nextBlockIndex + 1];
-                    if (inlineToken && inlineToken.type === 'inline' && inlineToken.children && inlineToken.children.length > 0) {
-                        const firstChild = inlineToken.children[0];
-                        let removeChild = false;
-
-                        if (firstChild.type === 'image') {
-                             removeChild = true;
-                        }
-                        else if (firstChild.type === 'text') {
-                             const content = firstChild.content.trim();
-                             if (content.startsWith('![') && content.endsWith(')') && content.includes('](')) {
-                                 removeChild = true;
-                             }
-                        }
-                        
-                        if (removeChild) {
-                            const href = (firstChild.type === 'image') ? firstChild.attrGet('src') : firstChild.content;
-                            logger.info(`Removing cover image '${href}' from article body.`);
-                            
-                            inlineToken.children.shift(); 
-                            
-                            if (inlineToken.children.length > 0 && (inlineToken.children[0].type === 'softbreak' || inlineToken.children[0].type === 'hardbreak')) {
-                                inlineToken.children.shift();
-                            }
-
-                            const remainingText = inlineToken.children.map(c => c.content).join('').trim();
-                            if (remainingText === '') {
-                                tokens.splice(nextBlockIndex, 3);
-                            }
-                        }
+        if (!title) {
+            // Priority 2: Unique H1
+            let h1Count = 0;
+            let firstH1Content = '';
+            
+            for (let i = 0; i < tokens.length; i++) {
+                if (tokens[i].type === 'heading_open' && tokens[i].tag === 'h1') {
+                    h1Count++;
+                    // The content of the header is in the next inline token
+                    if (i + 1 < tokens.length && tokens[i + 1].type === 'inline') {
+                        firstH1Content = tokens[i + 1].content;
                     }
                 }
+            }
 
-                logger.info('Removing first H1 header from article body.');
-                const deleteCount = h1CloseIndex - firstH1Index + 1;
-                tokens.splice(firstH1Index, deleteCount);
+            if (h1Count === 1) {
+                title = firstH1Content;
             }
         }
+
+        // Note: H1 removal logic and cover image removal logic have been removed.
+        // The user manages content structure manually via source Markdown.
 
         // Process Images in body
         for (const token of tokens) {
@@ -284,6 +251,7 @@ export class MarkdownService {
             thumb_media_id,
             digest: resolvedDigest,
             author: resolvedAuthor,
+            title,
         };
     }
 }

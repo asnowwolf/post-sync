@@ -77,8 +77,31 @@ describe('MarkdownService', () => {
             const { digest, html } = await markdownService.convert(markdown, articlePath);
             
             expect(digest).toBe('This is a summary.');
-            expect(html).not.toContain('<h1>Title</h1>');
+            expect(html).toContain('<h1>Title</h1>'); // H1 should NOT be removed
             expect(html).toContain('Some other content');
+        });
+
+        it('should extract title from frontmatter', async () => {
+            const articlePath = '/test/path/article-title-fm.md';
+            const markdown = '---\ntitle: My Custom Title\n---\n# H1 Title\nContent.';
+            const { title, html } = await markdownService.convert(markdown, articlePath);
+            expect(title).toBe('My Custom Title');
+            expect(html).toContain('<h1>H1 Title</h1>');
+        });
+
+        it('should extract title from unique H1 if no frontmatter title', async () => {
+            const articlePath = '/test/path/article-h1-title.md';
+            const markdown = '# My Unique H1\nContent.';
+            const { title, html } = await markdownService.convert(markdown, articlePath);
+            expect(title).toBe('My Unique H1');
+            expect(html).toContain('<h1>My Unique H1</h1>');
+        });
+
+        it('should NOT extract title if multiple H1s exist', async () => {
+            const articlePath = '/test/path/article-multi-h1.md';
+            const markdown = '# H1 One\n# H1 Two\nContent.';
+            const { title } = await markdownService.convert(markdown, articlePath);
+            expect(title).toBeUndefined();
         });
 
         it('should use default digest if no digest and no cover.prompt in frontmatter', async () => {
@@ -91,12 +114,7 @@ describe('MarkdownService', () => {
 
         it('should use cover.prompt as digest if digest is missing in frontmatter', async () => {
             const articlePath = '/test/path/article-cover-prompt.md';
-            const markdown = `---
-cover:
-  prompt: "This is the prompt digest"
----
-# Title
-Content`;
+            const markdown = '---\ncover:\n  prompt: "This is the prompt digest"\n---\n# Title\nContent';
             
             const { digest } = await markdownService.convert(markdown, articlePath, undefined, 'default');
             expect(digest).toBe('This is the prompt digest');
@@ -126,34 +144,36 @@ Content`;
             expect(author).toBeUndefined();
         });
 
-        it('should remove the first H1 and cover image reference, and use addPermanentMaterial for body images', async () => {
-            const articlePath = '/test/path/article-four.md';
-            const markdown = '# Title\n![cover](./article-four.png)\nSome other content.\n![body-image](./body.png)';
+        it('should process images and retain H1/cover in body', async () => {
+            const articlePath = '/test/path/article-images.md';
+            const markdown = '# Title\n![cover](./cover.png)\nSome other content.\n![body](./body.png)';
             
             vi.mocked(fs.access).mockResolvedValue(undefined); 
             vi.mocked(fs.readFile).mockImplementation((p: string) => {
-                if (p.includes('article-four.png')) return Promise.resolve(createMockImageBuffer('png'));
+                if (p.includes('article-images.png')) return Promise.resolve(createMockImageBuffer('png'));
+                if (p.includes('cover.png')) return Promise.resolve(createMockImageBuffer('png'));
                 if (p.includes('body.png')) return Promise.resolve(createMockImageBuffer('png'));
-                return Promise.reject(new Error('File not found'));
+                return Promise.reject(new Error('File not found: ' + p));
             });
             
             mockDbService.getMaterial.mockReturnValue(undefined);
             mockWeChatService.checkMediaExists.mockResolvedValue(false);
 
             mockWeChatService.addPermanentMaterial = vi.fn()
-                .mockResolvedValueOnce({ media_id: 'cover_media_id', url: 'cover_url' }) 
-                .mockResolvedValueOnce({ media_id: 'body_media_id', url: 'body_image_url' });
+                .mockResolvedValueOnce({ media_id: 'cover_media_id', url: 'cover_url' }) // Manual cover upload
+                .mockResolvedValueOnce({ media_id: 'cover_media_id_2', url: 'cover_url_2' }) // Cover in loop
+                .mockResolvedValueOnce({ media_id: 'body_media_id', url: 'body_image_url' }); // Body in loop
 
             vi.mocked(mockSharpInstance.metadata).mockResolvedValue({ format: 'png' });
 
-            const { thumb_media_id, html } = await markdownService.convert(markdown, articlePath);
+            const { thumb_media_id, html, title } = await markdownService.convert(markdown, articlePath);
 
             expect(thumb_media_id).toBe('cover_media_id');
-            expect(html).not.toContain('./article-four.png'); 
-            expect(html).not.toContain('<h1>Title</h1>');
-            
+            expect(title).toBe('Title');
+            expect(html).toContain('<h1>Title</h1>'); 
+            expect(html).toContain('<img src="cover_url_2"');
             expect(html).toContain('<img src="body_image_url"');
-            expect(mockWeChatService.addPermanentMaterial).toHaveBeenCalledTimes(2);
+            expect(mockWeChatService.addPermanentMaterial).toHaveBeenCalledTimes(3);
         });
 
         it('should return null thumb_media_id if cover image upload fails', async () => {
@@ -171,46 +191,7 @@ Content`;
             const { thumb_media_id, html } = await markdownService.convert(markdown, articlePath);
 
             expect(thumb_media_id).toBeNull();
-            expect(html).not.toContain('<h1>Title</h1>');
-        });
-
-        it('should remove cover image wrapped in paragraph', async () => {
-            const articlePath = '/test/path/article-para-cover.md';
-            const markdown = '# Title\n![para-cover](./cover.png)\nContent';
-            
-            vi.mocked(fs.access).mockResolvedValue(undefined); 
-            vi.mocked(fs.readFile).mockImplementation((p) => {
-                 if (p.includes('cover.png')) return Promise.resolve(createMockImageBuffer('png'));
-                 return Promise.reject(new Error('File not found'));
-            });
-            
-            mockDbService.getMaterial.mockReturnValue(undefined);
-            mockWeChatService.checkMediaExists.mockResolvedValue(false);
-            mockWeChatService.addPermanentMaterial = vi.fn().mockResolvedValue({ media_id: 'cover_id', url: 'url' });
-
-            const { thumb_media_id, html } = await markdownService.convert(markdown, articlePath);
-
-            expect(thumb_media_id).toBe('cover_id');
-            expect(html).not.toContain('<h1>Title</h1>');
-            expect(html).not.toContain('cover.png');
-        });
-
-        it('should remove broken cover image syntax (text) wrapped in paragraph', async () => {
-            const articlePath = '/test/path/article-broken-cover.md';
-            const markdown = '# Title\n![](./broken cover.png)\nContent';
-            
-            vi.mocked(fs.access).mockResolvedValue(undefined); 
-            
-            mockDbService.getMaterial.mockReturnValue(undefined);
-            mockWeChatService.checkMediaExists.mockResolvedValue(false);
-            mockWeChatService.addPermanentMaterial = vi.fn().mockResolvedValue({ media_id: 'cover_id', url: 'url' });
-
-            const { thumb_media_id, html } = await markdownService.convert(markdown, articlePath);
-
-            expect(thumb_media_id).toBe('cover_id');
-            expect(html).not.toContain('<h1>Title</h1>');
-            expect(html).not.toContain('broken cover.png');
-            expect(html).not.toContain('![]');
+            expect(html).toContain('<h1>Title</h1>');
         });
 
         it('should throw error when image upload fails', async () => {
@@ -236,11 +217,7 @@ Content`;
         });
 
         it('should render lists correctly', async () => {
-            const markdown = `
-- Item 1
-- Item 2
-  - Subitem 2.1
-`;
+            const markdown = '\n- Item 1\n- Item 2\n  - Subitem 2.1\n';
             const { html } = await markdownService.convert(markdown, articlePath);
             expect(html).toContain('<ul>');
             expect(html).toContain('<li>Item 1</li>');
@@ -250,10 +227,7 @@ Content`;
         });
 
         it('should render ordered lists correctly', async () => {
-            const markdown = `
-1. First
-2. Second
-`;
+            const markdown = '\n1. First\n2. Second\n';
             const { html } = await markdownService.convert(markdown, articlePath);
             expect(html).toContain('<ol>');
             expect(html).toContain('<li>First</li>');
@@ -301,11 +275,7 @@ Content`;
         });
         
         it('should render tables', async () => {
-            const markdown = `
-| Header 1 | Header 2 |
-| --- | --- |
-| Row 1 | Cell 2 |
-`;
+            const markdown = '\n| Header 1 | Header 2 |\n| --- | --- |\n| Row 1 | Cell 2 |\n';
             const { html } = await markdownService.convert(markdown, articlePath);
             expect(html).toContain('<table>');
             expect(html).toContain('<thead>');

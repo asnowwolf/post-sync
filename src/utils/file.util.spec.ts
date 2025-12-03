@@ -3,26 +3,31 @@ import {getFileHash, getFileList} from './file.util.js';
 import * as fs from 'fs';
 import * as crypto from 'crypto';
 import {FileError} from '../errors.js';
+import { finished } from 'stream/promises'; 
 
 vi.mock('crypto', () => ({
     createHash: vi.fn(() => ({
         update: vi.fn().mockReturnThis(),
-        digest: vi.fn(() => 'a73d328479e0db9668352b22f03ec1c33f269a8b'), // Consistent SHA1 for 'content'
+        digest: vi.fn(() => 'a73d328479e0db9668352b22f03ec1c33f269a8b'), 
     })),
 }));
 
-// Mock fs.promises
-vi.mock('fs', async () => {
+vi.mock('fs', async (importOriginal) => {
+    const actualFs = await importOriginal<typeof import('fs')>();
     return {
+        ...actualFs,
+        createReadStream: vi.fn(), 
         promises: {
+            ...actualFs.promises,
             lstat: vi.fn(),
             realpath: vi.fn(),
             stat: vi.fn(),
             readdir: vi.fn(),
         },
-        createReadStream: vi.fn(),
     };
 });
+
+vi.mock('stream/promises'); 
 
 describe('File Util', () => {
     beforeEach(() => {
@@ -71,32 +76,50 @@ describe('File Util', () => {
     });
 
     describe('getFileHash', () => {
+        let mockCreateReadStream: vi.Mock;
+        let mockFinished: vi.MockedFunction<typeof finished>; 
+        let mockStreamInstance: any;
+
+        beforeEach(() => {
+            vi.clearAllMocks();
+            mockCreateReadStream = vi.spyOn(fs, 'createReadStream') as vi.Mock;
+            
+            mockFinished = vi.mocked(finished); 
+            mockFinished.mockResolvedValue(undefined); 
+
+            mockStreamInstance = {
+                pipe: vi.fn((dest: any) => {
+                    dest.update(Buffer.from('content')); 
+                    return mockStreamInstance;
+                }),
+                on: vi.fn().mockReturnThis(), 
+                emit: vi.fn(), 
+            };
+            mockCreateReadStream.mockReturnValue(mockStreamInstance);
+        });
+
         it('should calculate SHA1 hash of a file', async () => {
             const filePath = '/test/file.md';
-            const mockStream = {
-                on: vi.fn((event, cb) => {
-                    if (event === 'data') cb(Buffer.from('content'));
-                    if (event === 'end') cb();
-                    return mockStream;
-                }),
-            };
-            (fs.createReadStream as any).mockReturnValue(mockStream);
+
+            vi.mocked(crypto.createHash).mockImplementationOnce(() => ({
+                update: vi.fn().mockReturnThis(),
+                digest: vi.fn(() => 'a73d328479e0db9668352b22f03ec1c33f269a8b'),
+            } as any)); 
 
             const hash = await getFileHash(filePath);
-            // sha1 of 'content' is 'a73d328479e0db9668352b22f03ec1c33f269a8b'
+
+            expect(mockCreateReadStream).toHaveBeenCalledWith(filePath);
+            expect(mockStreamInstance.pipe).toHaveBeenCalled(); 
+            expect(mockFinished).toHaveBeenCalledWith(mockStreamInstance); 
             expect(hash).toBe('a73d328479e0db9668352b22f03ec1c33f269a8b');
         });
 
         it('should throw FileError on read error', async () => {
-            const mockStream = {
-                on: vi.fn((event, cb) => {
-                    if (event === 'error') cb(new Error('read error'));
-                    return mockStream;
-                }),
-            };
-            (fs.createReadStream as any).mockReturnValue(mockStream);
+            const filePath = '/path';
+            mockFinished.mockRejectedValue(new FileError('read error', filePath)); 
 
-            await expect(getFileHash('/path')).rejects.toThrow(FileError);
+            await expect(getFileHash(filePath)).rejects.toThrow(FileError);
+            expect(mockCreateReadStream).toHaveBeenCalledWith(filePath);
         });
     });
 });

@@ -22,14 +22,16 @@ export async function readJsonFile<T>(filePath: string): Promise<T> {
     }
 }
 
-export function getFileHash(filePath: string): Promise<string> {
-    return new Promise((resolve, reject) => {
-        const hash = crypto.createHash('sha1');
-        const stream = fs.createReadStream(filePath);
-        stream.on('data', (data) => hash.update(data));
-        stream.on('end', () => resolve(hash.digest('hex')));
-        stream.on('error', (err) => reject(new FileError(`Failed to read file for hashing: ${filePath}`, filePath)));
-    });
+import { finished } from 'stream/promises';
+
+export async function getFileHash(filePath: string): Promise<string> {
+    const hash = crypto.createHash('sha1');
+    const stream = fs.createReadStream(filePath);
+    stream.pipe(hash); 
+
+    await finished(stream);
+
+    return hash.digest('hex');
 }
 
 export async function getFileList(inputPath: string): Promise<string[]> {

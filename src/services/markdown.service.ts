@@ -14,7 +14,7 @@ export class MarkdownService {
     private md: MarkdownIt;
     
     // Global typography settings to replace the wrapper container
-    private readonly GLOBAL_FONT = "font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Georgia, 'Times New Roman', serif; letter-spacing: 0.05em;";
+    private readonly GLOBAL_FONT = "";
     private readonly BASE_TEXT_STYLE = "font-size: 17px; line-height: 1.8; color: #333; text-align: justify;";
 
     constructor(private wechatService: WeChatService, private dbService: DbService) {
@@ -56,7 +56,8 @@ export class MarkdownService {
                 });
                 buffer = Buffer.from(response.data);
             } else {
-                const imagePath = path.resolve(path.dirname(articlePath), src);
+                const decodedSrc = decodeURIComponent(src);
+                const imagePath = path.resolve(path.dirname(articlePath), decodedSrc);
                 logger.debug(`Reading local image: ${imagePath}`);
                 buffer = await fs.readFile(imagePath);
             }
@@ -371,7 +372,25 @@ export class MarkdownService {
                                 }
 
                                 if (needsUpload) {
-                                    const result = await this.wechatService.addPermanentMaterial(buffer, 'image', filename, contentType);
+                                    let uploadBuffer = buffer;
+                                    let uploadContentType = contentType;
+                                    let uploadFilename = filename;
+
+                                    // Pre-process non-GIF images to ensure they meet WeChat size limits and format requirements
+                                    if (contentType !== 'image/gif') {
+                                        try {
+                                            uploadBuffer = await sharp(buffer)
+                                                .resize({ width: 1440, withoutEnlargement: true }) // Limit width to 1440px
+                                                .jpeg({ quality: 80 }) // Convert to JPEG with 80% quality
+                                                .toBuffer();
+                                            uploadContentType = 'image/jpeg';
+                                            uploadFilename = path.parse(filename).name + '.jpg';
+                                        } catch (e: any) {
+                                            logger.warn(`Failed to optimize image '${filename}', uploading original. Error: ${e.message}`);
+                                        }
+                                    }
+
+                                    const result = await this.wechatService.addPermanentMaterial(uploadBuffer, 'image', uploadFilename, uploadContentType);
                                     url = result.url;
                                     this.dbService.saveMaterial(localPath, hash, result.media_id, url);
                                 }

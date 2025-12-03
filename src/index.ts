@@ -51,14 +51,14 @@ program
     .command('create <path>')
     .description('读取文件或目录，并创建一篇或多篇公众号草稿')
     .option('--profile <id>', '指定要使用的配置 profile ID')
-    .option('-y, --yes', '跳过所有确认提示，直接执行操作') // Add this option
+    .option('-y, --yes', '跳过所有确认提示，直接执行操作')
     .action(async (rawPath, options) => {
         logger.debug("Executing create command action...");
         logger.info(`'create' command called for path: ${rawPath}`);
         logger.debug('Options:', options);
 
         let currentConfig;
-        let dbService;
+        let dbService: DbService | undefined;
         let wechatService;
         let markdownService;
         let files;
@@ -84,116 +84,113 @@ program
                 logger.warn('No Markdown files found at the specified path.');
                 return;
             }
+
+            for (const file of files) {
+                try {
+                    logger.info(`Processing '${file}'...`);
+
+                    const markdownContent = await fs.promises.readFile(file, 'utf-8');
+                    const {html, thumb_media_id, digest, author} = await markdownService.convert(markdownContent, file, currentConfig.author);
+
+                    if (!thumb_media_id) {
+                        logger.error(`Could not generate a thumbnail for '${file}'. Skipping draft creation/update.`);
+                        continue;
+                    }
+
+                    const title = path.basename(file, '.md');
+                    const contentToHash = JSON.stringify({ title, html, digest, author, thumb_media_id });
+                    const hash = crypto.createHash('sha1').update(contentToHash).digest('hex');
+
+                    const articleEntry = dbService.findArticleByPath(file);
+                    const draftEntry = articleEntry ? dbService.findLatestDraftByArticleId(articleEntry.id) : undefined;
+                    
+                    let action: 'SKIP' | 'CREATE' | 'UPDATE' = 'CREATE';
+                    let draftOnServer: any = null;
+
+                    if (draftEntry) {
+                        try {
+                            draftOnServer = await wechatService.getDraft(draftEntry.media_id);
+                        } catch (e) {
+                            logger.warn(`Failed to check draft existence for '${file}': ${(e as any).message}`);
+                        }
+
+                        if (!draftOnServer) {
+                            action = 'CREATE';
+                            if (articleEntry && articleEntry.source_hash === hash) {
+                                logger.info(`Draft for '${file}' is missing on server. Will re-create.`);
+                            }
+                        } else {
+                            if (articleEntry && articleEntry.source_hash === hash) {
+                                action = 'SKIP';
+                            } else {
+                                action = 'UPDATE';
+                            }
+                        }
+                    }
+
+                    if (action === 'SKIP') {
+                        logger.info(`Skipping '${file}' (content unchanged and draft exists).`);
+                        continue;
+                    }
+                    
+                    if (action === 'UPDATE' && draftEntry) {
+                        await wechatService.updateDraft(draftEntry.media_id, {
+                            title,
+                            content: html,
+                            thumb_media_id,
+                            digest: digest || '',
+                            author: author || '',
+                        });
+                        
+                        // Capture dbService in closure for transaction, ensuring it's not undefined
+                        const db = dbService;
+                        db.performTransaction(() => {
+                            if (articleEntry) {
+                                db.updateArticleHash(articleEntry.id, hash);
+                            }
+                        });
+                        logger.info(`Successfully updated draft for '${file}' (media_id: ${draftEntry.media_id}).`);
+
+                    } else {
+                        const media_id = await wechatService.createDraft({
+                            title,
+                            content: html,
+                            thumb_media_id,
+                            digest: digest || '',
+                            author: author || '',
+                        });
+                        
+                        const db = dbService;
+                        db.performTransaction(() => {
+                            if (articleEntry) {
+                                db.updateArticleHash(articleEntry.id, hash);
+                                db.insertDraft(articleEntry.id, media_id);
+                                logger.info(`Updated hash for '${file}' and created new draft with media_id: ${media_id}`);
+                            } else {
+                                const result = db.insertArticle(file, hash);
+                                const articleId = result.lastInsertRowid as number;
+                                db.insertDraft(articleId, media_id);
+                                logger.info(`Inserted new article '${file}' and created draft with media_id: ${media_id}`);
+                            }
+                        });
+                    }
+                } catch (error: any) {
+                    logger.error(`Failed to process '${file}':`, error.message);
+                    if (error.details) {
+                        logger.error('API Error Details:', JSON.stringify(error.details, null, 2));
+                    }
+                }
+            }
         } catch (error: any) {
             logger.error('Initialization failed:', error.message);
-            return;
-        }
-
-        for (const file of files) {
-            try {
-                logger.info(`Processing '${file}'...`);
-
-                // 1. Read content and Convert to HTML first to determine the TRUE content hash
-                const markdownContent = await fs.promises.readFile(file, 'utf-8');
-                const {html, thumb_media_id, digest, author} = await markdownService.convert(markdownContent, file, currentConfig.author);
-
-                if (!thumb_media_id) {
-                    logger.error(`Could not generate a thumbnail for '${file}'. Skipping draft creation/update.`);
-                    continue;
-                }
-
-                // 2. Calculate hash based on the OUTPUT content + metadata
-                const title = path.basename(file, '.md');
-                const contentToHash = JSON.stringify({ title, html, digest, author, thumb_media_id });
-                const hash = crypto.createHash('sha1').update(contentToHash).digest('hex');
-
-                const articleEntry = dbService.findArticleByPath(file);
-                const draftEntry = articleEntry ? dbService.findLatestDraftByArticleId(articleEntry.id) : undefined;
-                
-                let action: 'SKIP' | 'CREATE' | 'UPDATE' = 'CREATE';
-                let draftOnServer: any = null;
-
-                if (draftEntry) {
-                    try {
-                        draftOnServer = await wechatService.getDraft(draftEntry.media_id);
-                    } catch (e) {
-                        logger.warn(`Failed to check draft existence for '${file}': ${(e as any).message}`);
-                    }
-
-                    if (!draftOnServer) {
-                        // Draft known in DB but missing on server (deleted)
-                        action = 'CREATE';
-                        if (articleEntry && articleEntry.source_hash === hash) {
-                            logger.info(`Draft for '${file}' is missing on server. Will re-create.`);
-                        }
-                    } else {
-                        // Draft exists on server
-                        if (articleEntry && articleEntry.source_hash === hash) {
-                             // Content matches and draft exists.
-                             action = 'SKIP';
-                        } else {
-                            // Content changed, draft exists -> Update
-                            action = 'UPDATE';
-                        }
-                    }
-                }
-
-
-                if (action === 'SKIP') {
-                    logger.info(`Skipping '${file}' (content unchanged and draft exists).`);
-                    continue;
-                }
-                
-                if (action === 'UPDATE' && draftEntry) {
-                     await wechatService.updateDraft(draftEntry.media_id, {
-                        title,
-                        content: html,
-                        thumb_media_id,
-                        digest: digest || '',
-                        author: author || '',
-                    });
-                    
-                    dbService.performTransaction(() => {
-                        if (articleEntry) {
-                            dbService.updateArticleHash(articleEntry.id, hash);
-                        }
-                    });
-                    logger.info(`Successfully updated draft for '${file}' (media_id: ${draftEntry.media_id}).`);
-
-                } else {
-                    // CREATE
-                    const media_id = await wechatService.createDraft({
-                        title,
-                        content: html,
-                        thumb_media_id,
-                        digest: digest || '',
-                        author: author || '',
-                    });
-                    
-                    dbService.performTransaction(() => {
-                        if (articleEntry) {
-                            dbService.updateArticleHash(articleEntry.id, hash);
-                            dbService.insertDraft(articleEntry.id, media_id);
-                            logger.info(`Updated hash for '${file}' and created new draft with media_id: ${media_id}`);
-                        } else {
-                            const result = dbService.insertArticle(file, hash);
-                            const articleId = result.lastInsertRowid as number;
-                            dbService.insertDraft(articleId, media_id);
-                            logger.info(`Inserted new article '${file}' and created draft with media_id: ${media_id}`);
-                        }
-                    });
-                }
-            } catch (error: any) {
-                logger.error(`Failed to process '${file}':`, error.message);
-                if (error.details) {
-                    logger.error('API Error Details:', JSON.stringify(error.details, null, 2));
-                }
+        } finally {
+            if (dbService) {
+                dbService.close();
             }
         }
     });
 
 program
-
     .command('publish <path>')
     .description('发布一篇或多篇已创建的草稿')
     .option('--profile <id>', '指定要使用的配置 profile ID')
@@ -202,7 +199,7 @@ program
         logger.debug('Options:', options);
 
         let currentConfig;
-        let dbService;
+        let dbService: DbService | undefined;
         let wechatService;
         let files;
 
@@ -222,38 +219,39 @@ program
                 logger.warn('No Markdown files found at the specified path.');
                 return;
             }
+
+            for (const file of files) {
+                try {
+                    const articleEntry = dbService.findArticleByPath(file);
+                    if (!articleEntry) {
+                        logger.warn(`Article for '${file}' not found in database. Please run 'create' first.`);
+                        continue;
+                    }
+
+                    const draft = dbService.findLatestDraftByArticleId(articleEntry.id);
+                    if (!draft) {
+                        logger.warn(`No draft found for '${file}'. Please run 'create' first.`);
+                        continue;
+                    }
+
+                    const publishId = await wechatService.publishDraft(draft.media_id);
+                    dbService.insertPublication(draft.id, publishId);
+                    logger.info(`Successfully submitted '${file}' for publication with publish_id: ${publishId}.`);
+                } catch (error: any) {
+                    logger.error(`Failed to publish '${file}':`, error.message);
+                    if (error.details) {
+                        logger.error('API Error Details:', JSON.stringify(error.details, null, 2));
+                    }
+                }
+            }
         } catch (error: any) {
             logger.error('Initialization failed:', error.message);
-            return;
-        }
-
-        for (const file of files) {
-            try {
-                const articleEntry = dbService.findArticleByPath(file);
-                if (!articleEntry) {
-                    logger.warn(`Article for '${file}' not found in database. Please run 'create' first.`);
-                    continue;
-                }
-
-                const draft = dbService.findLatestDraftByArticleId(articleEntry.id);
-                if (!draft) {
-                    logger.warn(`No draft found for '${file}'. Please run 'create' first.`);
-                    continue;
-                }
-
-                const publishId = await wechatService.publishDraft(draft.media_id);
-                dbService.insertPublication(draft.id, publishId);
-                logger.info(`Successfully submitted '${file}' for publication with publish_id: ${publishId}.`);
-            } catch (error: any) {
-                logger.error(`Failed to publish '${file}':`, error.message);
-                if (error.details) {
-                    logger.error('API Error Details:', JSON.stringify(error.details, null, 2));
-                }
+        } finally {
+            if (dbService) {
+                dbService.close();
             }
         }
     });
-
-
 
 program
     .command('post <path>')
@@ -264,7 +262,7 @@ program
         logger.debug('Options:', options);
 
         let currentConfig;
-        let dbService;
+        let dbService: DbService | undefined;
         let wechatService;
         let markdownService;
         let files;
@@ -286,117 +284,113 @@ program
                 logger.warn('No Markdown files found at the specified path.');
                 return;
             }
-        } catch (error: any) {
-            logger.error('Initialization failed:', error.message);
-            return;
-        }
 
-        for (const file of files) {
-            try {
-                logger.info(`Processing '${file}'...`);
+            for (const file of files) {
+                try {
+                    logger.info(`Processing '${file}'...`);
 
-                // 1. Read content and Convert first to calculate output hash
-                const markdownContent = await fs.promises.readFile(file, 'utf-8');
-                const { html, thumb_media_id, digest, author } = await markdownService.convert(markdownContent, file, currentConfig.author);
+                    const markdownContent = await fs.promises.readFile(file, 'utf-8');
+                    const { html, thumb_media_id, digest, author } = await markdownService.convert(markdownContent, file, currentConfig.author);
 
-                if (!thumb_media_id) {
-                    logger.error(`Could not generate a thumbnail for '${file}'. Skipping draft creation/update.`);
-                    continue;
-                }
-
-                // 2. Calculate hash
-                const title = path.basename(file, '.md');
-                const contentToHash = JSON.stringify({ title, html, digest, author, thumb_media_id });
-                const hash = crypto.createHash('sha1').update(contentToHash).digest('hex');
-
-                let articleEntry = dbService.findArticleByPath(file);
-                let draftEntry = articleEntry ? dbService.findLatestDraftByArticleId(articleEntry.id) : undefined;
-                
-                let action: 'SKIP' | 'CREATE' | 'UPDATE' = 'CREATE';
-                let draftOnServer: any = null;
-
-                if (draftEntry) {
-                     try {
-                        draftOnServer = await wechatService.getDraft(draftEntry.media_id);
-                    } catch (e) {
-                         logger.warn(`Failed to check draft existence for '${file}': ${(e as any).message}`);
+                    if (!thumb_media_id) {
+                        logger.error(`Could not generate a thumbnail for '${file}'. Skipping draft creation/update.`);
+                        continue;
                     }
 
-                    if (!draftOnServer) {
-                        action = 'CREATE';
-                    } else {
-                        if (articleEntry && articleEntry.source_hash === hash) {
-                             // For 'post', if content is unchanged and draft exists,
-                             // we should proceed to PUBLISH.
-                             // So we don't need to create/update draft, but we DO need to ensure we have the draft object.
-                             action = 'SKIP'; 
+                    const title = path.basename(file, '.md');
+                    const contentToHash = JSON.stringify({ title, html, digest, author, thumb_media_id });
+                    const hash = crypto.createHash('sha1').update(contentToHash).digest('hex');
+
+                    let articleEntry = dbService.findArticleByPath(file);
+                    let draftEntry = articleEntry ? dbService.findLatestDraftByArticleId(articleEntry.id) : undefined;
+                    
+                    let action: 'SKIP' | 'CREATE' | 'UPDATE' = 'CREATE';
+                    let draftOnServer: any = null;
+
+                    if (draftEntry) {
+                        try {
+                            draftOnServer = await wechatService.getDraft(draftEntry.media_id);
+                        } catch (e) {
+                            logger.warn(`Failed to check draft existence for '${file}': ${(e as any).message}`);
+                        }
+
+                        if (!draftOnServer) {
+                            action = 'CREATE';
                         } else {
-                            action = 'UPDATE';
+                            if (articleEntry && articleEntry.source_hash === hash) {
+                                action = 'SKIP'; 
+                            } else {
+                                action = 'UPDATE';
+                            }
                         }
                     }
-                }
 
-                // If CREATE or UPDATE, we need to convert and send.
-                if (action === 'CREATE' || action === 'UPDATE') {
-                     
-                    if (action === 'UPDATE' && draftEntry) {
-                         await wechatService.updateDraft(draftEntry.media_id, {
-                            title,
-                            content: html,
-                            thumb_media_id,
-                            digest: digest || '',
-                            author: author || '',
-                        });
-                        dbService.performTransaction(() => {
-                            if (articleEntry) dbService.updateArticleHash(articleEntry.id, hash);
-                        });
-                        logger.info(`Updated draft '${file}' (media_id: ${draftEntry.media_id}).`);
+                    if (action === 'CREATE' || action === 'UPDATE') {
+                        if (action === 'UPDATE' && draftEntry) {
+                            await wechatService.updateDraft(draftEntry.media_id, {
+                                title,
+                                content: html,
+                                thumb_media_id,
+                                digest: digest || '',
+                                author: author || '',
+                            });
+                            const db = dbService;
+                            db.performTransaction(() => {
+                                if (articleEntry) db.updateArticleHash(articleEntry!.id, hash);
+                            });
+                            logger.info(`Updated draft '${file}' (media_id: ${draftEntry.media_id}).`);
+                        } else {
+                            const media_id = await wechatService.createDraft({
+                                title,
+                                content: html,
+                                thumb_media_id,
+                                digest: digest || '',
+                                author: author || '',
+                            });
+                            const db = dbService;
+                            db.performTransaction(() => {
+                                if (articleEntry) {
+                                    db.updateArticleHash(articleEntry.id, hash);
+                                    const result = db.insertDraft(articleEntry.id, media_id);
+                                    draftEntry = { id: result.lastInsertRowid as number, media_id };
+                                } else {
+                                    const result = db.insertArticle(file, hash);
+                                    const articleId = result.lastInsertRowid as number;
+                                    const draftResult = db.insertDraft(articleId, media_id);
+                                    draftEntry = { id: draftResult.lastInsertRowid as number, media_id };
+                                    articleEntry = db.findArticleByPath(file);
+                                }
+                            });
+                            logger.info(`Created new draft '${file}' (media_id: ${draftEntry?.media_id}).`);
+                        }
                     } else {
-                         // CREATE
-                        const media_id = await wechatService.createDraft({
-                            title,
-                            content: html,
-                            thumb_media_id,
-                            digest: digest || '',
-                            author: author || '',
-                        });
-                        dbService.performTransaction(() => {
-                            if (articleEntry) {
-                                dbService.updateArticleHash(articleEntry.id, hash);
-                                const result = dbService.insertDraft(articleEntry.id, media_id);
-                                draftEntry = { id: result.lastInsertRowid as number, media_id };
-                            } else {
-                                const result = dbService.insertArticle(file, hash);
-                                const articleId = result.lastInsertRowid as number;
-                                const draftResult = dbService.insertDraft(articleId, media_id);
-                                draftEntry = { id: draftResult.lastInsertRowid as number, media_id };
-                                articleEntry = dbService.findArticleByPath(file);
-                            }
-                        });
-                         logger.info(`Created new draft '${file}' (media_id: ${draftEntry?.media_id}).`);
+                        logger.info(`Draft for '${file}' is up-to-date on server.`);
                     }
-                } else {
-                    logger.info(`Draft for '${file}' is up-to-date on server.`);
+                    
+                    if (draftEntry) {
+                        logger.info(`Attempting to publish draft for '${file}'...`);
+                        try {
+                            const publishId = await wechatService.publishDraft(draftEntry.media_id);
+                            dbService.insertPublication(draftEntry.id, publishId);
+                            logger.info(`Successfully submitted '${file}' for publication with publish_id: ${publishId}.`);
+                        } catch (e: any) {
+                            logger.warn(`Publishing failed (maybe already published?): ${e.message}`);
+                        }
+                    } else {
+                        logger.warn(`No draft available for '${file}' to publish.`);
+                    }
+                } catch (error: any) {
+                    logger.error(`Failed to post '${file}':`, error.message);
+                    if (error.details) {
+                        logger.error('API Error Details:', JSON.stringify(error.details, null, 2));
+                    }
                 }
-                
-                // PUBLISH PHASE
-                if (draftEntry) {
-                     logger.info(`Attempting to publish draft for '${file}'...`);
-                     try {
-                         const publishId = await wechatService.publishDraft(draftEntry.media_id);
-                         dbService.insertPublication(draftEntry.id, publishId);
-                         logger.info(`Successfully submitted '${file}' for publication with publish_id: ${publishId}.`);
-                     } catch (e: any) {
-                         logger.warn(`Publishing failed (maybe already published?): ${e.message}`);
-                     }
-                } else {
-                    logger.warn(`No draft available for '${file}' to publish.`);
-                }
-            } catch (error: any) {
-                logger.error(`Failed to post '${file}':`, error.message);
-                if (error.details) {
-                    logger.error('API Error Details:', JSON.stringify(error.details, null, 2));
-                }
+            }
+        } catch (error: any) {
+            logger.error('Initialization failed:', error.message);
+        } finally {
+            if (dbService) {
+                dbService.close();
             }
         }
     });
@@ -410,7 +404,7 @@ program
         logger.debug('Options:', options);
 
         let currentConfig;
-        let dbService;
+        let dbService: DbService | undefined;
         let wechatService;
 
         try {
@@ -452,10 +446,9 @@ program
 
                     logger.info(`Found publication record for '${file}' (publish_id: ${publication.publish_id}).`);
                     
-                    // We need to get the article_id using the publish_id
                     const status = await wechatService.getPublishStatus(publication.publish_id);
                     
-                    if (status.publish_status !== 0) { // 0 means success
+                    if (status.publish_status !== 0) {
                          logger.warn(`Publication status for '${file}' is not success (status: ${status.publish_status}). Cannot delete.`);
                          continue;
                     }
@@ -487,15 +480,22 @@ program
 
         } catch (error: any) {
             logger.error('An error occurred during the delete process:', error.message);
+        } finally {
+            if (dbService) {
+                dbService.close();
+            }
         }
     });
 
-program
-    .command('delete-all')
+const deleteAll = program.command('delete-all')
+    .description('批量删除内容');
+
+deleteAll
+    .command('articles')
     .description('删除所有已发布的文章 (交互式)')
     .option('--profile <id>', '指定要使用的配置 profile ID')
     .action(async (options) => {
-        logger.info(`'delete-all' command called.`);
+        logger.info(`'delete-all articles' command called.`);
         logger.debug('Options:', options);
 
         let currentConfig;
@@ -517,7 +517,6 @@ program
             let skippedCount = 0;
             let deleteAll = false;
 
-            // Initial check
             const initialData = await wechatService.batchGetPublishedArticles(0, 1);
             const total = initialData.total_count;
             logger.info(`Total published articles found: ${total}`);
@@ -528,7 +527,6 @@ program
             }
 
             while (true) {
-                // Always fetch a batch starting from what we've decided to keep
                 const batchData = await wechatService.batchGetPublishedArticles(skippedCount, 20);
                 const items = batchData.item;
 
@@ -547,7 +545,7 @@ program
                             await wechatService.deletePublishedArticle(articleId);
                         } catch (e: any) {
                             logger.error(`Failed to delete '${title}': ${e.message}`);
-                            skippedCount++; // If failed, treat as skipped to avoid stuck loop
+                            skippedCount++;
                         }
                         continue;
                     }
@@ -588,19 +586,19 @@ program
             logger.info('Finished processing all published articles.');
 
         } catch (error: any) {
-            logger.error('An error occurred during delete-all:', error.message);
+            logger.error('An error occurred during delete-all articles:', error.message);
             if (error.details) {
                 logger.error('API Error Details:', JSON.stringify(error.details, null, 2));
             }
         }
     });
 
-program
-    .command('delete-drafts')
+deleteAll
+    .command('drafts')
     .description('删除所有草稿 (交互式)')
     .option('--profile <id>', '指定要使用的配置 profile ID')
     .action(async (options) => {
-        logger.info(`'delete-drafts' command called.`);
+        logger.info(`'delete-all drafts' command called.`);
         logger.debug('Options:', options);
 
         let currentConfig;
@@ -622,7 +620,6 @@ program
             let skippedCount = 0;
             let deleteAll = false;
 
-            // Initial check
             const initialData = await wechatService.batchGetDrafts(0, 1);
             const total = initialData.total_count;
             logger.info(`Total drafts found: ${total}`);
@@ -633,7 +630,6 @@ program
             }
 
             while (true) {
-                // Always fetch a batch starting from what we've decided to keep
                 const batchData = await wechatService.batchGetDrafts(skippedCount, 20);
                 const items = batchData.item;
 
@@ -652,7 +648,7 @@ program
                             await wechatService.deleteDraft(mediaId);
                         } catch (e: any) {
                             logger.error(`Failed to delete '${title}': ${e.message}`);
-                            skippedCount++; // If failed, treat as skipped
+                            skippedCount++;
                         }
                         continue;
                     }
@@ -693,7 +689,7 @@ program
             logger.info('Finished processing all drafts.');
 
         } catch (error: any) {
-            logger.error('An error occurred during delete-drafts:', error.message);
+            logger.error('An error occurred during delete-all drafts:', error.message);
             if (error.details) {
                 logger.error('API Error Details:', JSON.stringify(error.details, null, 2));
             }
@@ -701,5 +697,3 @@ program
     });
 
 program.parse(process.argv);
-
-

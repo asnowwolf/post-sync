@@ -152,4 +152,13 @@ export class DbService {
         const now = new Date().toISOString();
         return stm.run(localPath, hash, mediaId, url, now);
     }
+
+    public close() {
+        try {
+            this.db.close();
+            logger.debug('Database connection closed.');
+        } catch (error: any) {
+            logger.error(`Failed to close database connection: ${error.message}`);
+        }
+    }
 }

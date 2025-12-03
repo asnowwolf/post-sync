@@ -24,6 +24,7 @@ const mocks = vi.hoisted(() => {
         mockInsertPublication: vi.fn(),
         mockFindPublicationByDraftId: vi.fn(),
         mockDeletePublication: vi.fn(),
+        mockClose: vi.fn(),
 
         // WeChatService
         mockCreateDraft: vi.fn().mockResolvedValue('mock_media_id'),
@@ -57,7 +58,6 @@ const mocks = vi.hoisted(() => {
 
         // Readline
         mockQuestion: vi.fn(),
-        mockClose: vi.fn(),
     };
 });
 
@@ -103,6 +103,7 @@ vi.mock('./services/db.service.js', () => {
                 insertPublication: mocks.mockInsertPublication,
                 findPublicationByDraftId: mocks.mockFindPublicationByDraftId,
                 deletePublication: mocks.mockDeletePublication,
+                close: mocks.mockClose,
             };
         }),
     };
@@ -140,30 +141,34 @@ vi.mock('./services/markdown.service.js', () => {
 
 // 5. Mock Commander
 vi.mock('commander', () => {
+    const createCommandMock = (name: string) => {
+        const cmd: any = {
+            name: mocks.mockName,
+            description: mocks.mockDescription,
+            version: mocks.mockVersion,
+            parse: mocks.mockParse,
+            command: vi.fn().mockImplementation((subCommandName: string) => {
+                const subCmd = createCommandMock(subCommandName);
+                mocks.mockCommand(subCommandName); 
+                return subCmd;
+            }),
+            option: mocks.mockOption.mockReturnThis(),
+            action: vi.fn((fn: Function) => {
+                commandActions[name] = fn;
+                return cmd;
+            }),
+        };
+        return cmd;
+    };
+
     return {
         Command: class {
             constructor() {
-                this.name = mocks.mockName;
-                this.description = mocks.mockDescription;
-                this.version = mocks.mockVersion;
-                this.parse = mocks.mockParse;
+                // The root program instance behaves like a command but 'command' method creates children
+                const root = createCommandMock('root');
+                // We need to ensure 'program' instance methods are available
+                return root; 
             }
-            command = vi.fn().mockImplementation((commandName: string) => {
-                const commandInstance = {
-                    description: vi.fn().mockReturnThis(),
-                    option: mocks.mockOption.mockReturnThis(),
-                    action: vi.fn((fn: Function) => {
-                        commandActions[commandName] = fn;
-                        return commandInstance;
-                    }),
-                };
-                mocks.mockCommand(commandName);
-                return commandInstance;
-            });
-            name = mocks.mockName;
-            description = mocks.mockDescription;
-            version = mocks.mockVersion;
-            parse = mocks.mockParse;
         },
     };
 });
@@ -380,11 +385,11 @@ describe('CLI', () => {
         });
     });
 
-    describe('delete-all command', () => {
+    describe('delete-all articles command', () => {
         beforeEach(async () => {
-            commandAction = commandActions['delete-all'];
+            commandAction = commandActions['articles'];
             if (!commandAction) {
-                throw new Error("Could not find 'delete-all' command action.");
+                throw new Error("Could not find 'delete-all articles' command action.");
             }
         });
 
@@ -429,11 +434,11 @@ describe('CLI', () => {
         });
     });
 
-    describe('delete-drafts command', () => {
+    describe('delete-all drafts command', () => {
         beforeEach(async () => {
-            commandAction = commandActions['delete-drafts'];
+            commandAction = commandActions['drafts'];
             if (!commandAction) {
-                throw new Error("Could not find 'delete-drafts' command action.");
+                throw new Error("Could not find 'delete-all drafts' command action.");
             }
         });
 

@@ -49,7 +49,8 @@ describe('WeChatService', () => {
                 appid: mockConfig.appId,
                 secret: mockConfig.appSecret,
                 force_refresh: false,
-            }
+            },
+            { proxy: false }
         );
         expect(token).toBe('valid_token');
 
@@ -83,7 +84,8 @@ describe('WeChatService', () => {
                         only_fans_can_comment: 0,
                     },
                 ],
-            }
+            },
+            { proxy: false }
         );
         expect(mediaId).toBe('draft_media_id');
     });
@@ -99,7 +101,8 @@ describe('WeChatService', () => {
 
         expect(mockPost).toHaveBeenCalledWith(
             `${mockConfig.wechatApiBaseUrl}/cgi-bin/freepublish/submit?access_token=valid_token`,
-            { media_id: mediaId }
+            { media_id: mediaId },
+            { proxy: false }
         );
         expect(publishId).toBe('publish_job_id');
     });
@@ -115,7 +118,8 @@ describe('WeChatService', () => {
 
         expect(mockPost).toHaveBeenCalledWith(
             `${mockConfig.wechatApiBaseUrl}/cgi-bin/freepublish/get?access_token=valid_token`,
-            { publish_id: publishId }
+            { publish_id: publishId },
+            { proxy: false }
         );
         expect(status).toEqual({ publish_status: 0 });
     });
@@ -141,7 +145,8 @@ describe('WeChatService', () => {
 
         expect(mockPost).toHaveBeenCalledWith(
             `${mockConfig.wechatApiBaseUrl}/cgi-bin/freepublish/delete?access_token=valid_token`,
-            { article_id: articleId }
+            { article_id: articleId },
+            { proxy: false }
         );
     });
 
@@ -162,7 +167,8 @@ describe('WeChatService', () => {
 
         expect(mockPost).toHaveBeenCalledWith(
             `${mockConfig.wechatApiBaseUrl}/cgi-bin/freepublish/batchget?access_token=valid_token`,
-            { offset, count, no_content: 1 }
+            { offset, count, no_content: 1 },
+            { proxy: false }
         );
         expect(result).toEqual(mockResponse);
     });
@@ -178,7 +184,8 @@ describe('WeChatService', () => {
 
         expect(mockPost).toHaveBeenCalledWith(
             `${mockConfig.wechatApiBaseUrl}/cgi-bin/draft/delete?access_token=valid_token`,
-            { media_id: mediaId }
+            { media_id: mediaId },
+            { proxy: false }
         );
     });
 
@@ -199,7 +206,8 @@ describe('WeChatService', () => {
 
         expect(mockPost).toHaveBeenCalledWith(
             `${mockConfig.wechatApiBaseUrl}/cgi-bin/draft/batchget?access_token=valid_token`,
-            { offset, count, no_content: 1 }
+            { offset, count, no_content: 1 },
+            { proxy: false }
         );
         expect(result).toEqual(mockResponse);
     });

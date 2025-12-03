@@ -44,9 +44,24 @@ vi.mock('marked', () => ({
                  tokens.push({ type: 'space', raw: '\n' });
                  tokens.push({ type: 'image', href: './article-four.png', text: 'cover' });
             }
+            if (markdown.includes('![para-cover](./cover.png)')) {
+                 tokens.push({ type: 'space', raw: '\n' });
+                 tokens.push({ 
+                     type: 'paragraph', 
+                     tokens: [{ type: 'image', href: './cover.png', text: 'para-cover' }] 
+                 });
+            }
+            if (markdown.includes('![](./broken cover.png)')) {
+                 tokens.push({ type: 'space', raw: '\n' });
+                 tokens.push({ 
+                     type: 'paragraph', 
+                     tokens: [{ type: 'text', text: '![](./broken cover.png)', raw: '![](./broken cover.png)' }] 
+                 });
+            }
             if (markdown.includes('![local image]')) tokens.push({ type: 'image', href: './images/local.png', text: 'local image' });
             if (markdown.includes('![remote image]')) tokens.push({ type: 'image', href: 'http://example.com/remote.gif', text: 'remote image' });
             if (markdown.includes('![body-image](./body.png)')) tokens.push({ type: 'image', href: './body.png', text: 'body-image' });
+            if (markdown.includes('![](./fail.png)')) tokens.push({ type: 'image', href: './fail.png', text: '' });
             if (markdown.includes('Some other content.')) {
                  if (tokens.length > 0) tokens.push({ type: 'space', raw: '\n' });
                  tokens.push({ type: 'paragraph', text: 'Some other content.' });
@@ -249,5 +264,58 @@ Content`;
         expect(thumb_media_id).toBeNull();
         expect(html).not.toContain('<h1>Title</h1>');
         expect(mockDbService.saveMaterial).not.toHaveBeenCalled();
+    });
+
+    it('should remove cover image wrapped in paragraph', async () => {
+        const articlePath = '/test/path/article-para-cover.md';
+        const markdown = '# Title\n![para-cover](./cover.png)\nContent';
+        
+        vi.mocked(fs.access).mockResolvedValue(undefined); 
+        vi.mocked(fs.readFile).mockImplementation((p) => {
+             if (p.includes('cover.png')) return Promise.resolve(createMockImageBuffer('png'));
+             return Promise.reject(new Error('File not found'));
+        });
+        
+        mockDbService.getMaterial.mockReturnValue(undefined);
+        mockWeChatService.checkMediaExists.mockResolvedValue(false);
+        mockWeChatService.addPermanentMaterial = vi.fn().mockResolvedValue({ media_id: 'cover_id', url: 'url' });
+
+        const { thumb_media_id, html } = await markdownService.convert(markdown, articlePath);
+
+        expect(thumb_media_id).toBe('cover_id');
+        expect(html).not.toContain('<h1>Title</h1>');
+        expect(html).not.toContain('cover.png');
+    });
+
+    it('should remove broken cover image syntax (text) wrapped in paragraph', async () => {
+        const articlePath = '/test/path/article-broken-cover.md';
+        const markdown = '# Title\n![](./broken cover.png)\nContent';
+        
+        vi.mocked(fs.access).mockResolvedValue(undefined); 
+        
+        mockDbService.getMaterial.mockReturnValue(undefined);
+        mockWeChatService.checkMediaExists.mockResolvedValue(false);
+        mockWeChatService.addPermanentMaterial = vi.fn().mockResolvedValue({ media_id: 'cover_id', url: 'url' });
+
+        const { thumb_media_id, html } = await markdownService.convert(markdown, articlePath);
+
+        expect(thumb_media_id).toBe('cover_id');
+        expect(html).not.toContain('<h1>Title</h1>');
+        expect(html).not.toContain('broken cover.png');
+        expect(html).not.toContain('![]');
+    });
+
+    it('should throw error when image upload fails', async () => {
+        const articlePath = '/test/path/article-upload-fail-body.md';
+        const markdown = '![](./fail.png)';
+        
+        vi.mocked(fs.access).mockRejectedValue(new Error('No cover')); 
+        vi.mocked(fs.readFile).mockResolvedValue(createMockImageBuffer('png'));
+        
+        mockDbService.getMaterial.mockReturnValue(undefined);
+        mockWeChatService.checkMediaExists.mockResolvedValue(false);
+        mockWeChatService.addPermanentMaterial = vi.fn().mockRejectedValue(new Error('Upload failed'));
+
+        await expect(markdownService.convert(markdown, articlePath)).rejects.toThrow('Upload failed');
     });
 });

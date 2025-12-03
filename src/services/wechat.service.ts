@@ -40,7 +40,7 @@ export class WeChatService {
 
         try {
             const response = await retry(async () => {
-                const res = await this.http.post(url, data);
+                const res = await this.http.post(url, data, { proxy: false });
                 if (res.data.errcode) {
                     throw new ApiError(`WeChat API Error: ${res.data.errmsg}`, res.status, res.data);
                 }
@@ -83,7 +83,7 @@ export class WeChatService {
         logger.info(`Uploading permanent ${type} '${filename}' to WeChat...`);
         try {
             const response = await retry(async () => {
-                const res = await this.http.post(url, form, {headers: form.getHeaders()});
+                const res = await this.http.post(url, form, {headers: form.getHeaders(), proxy: false});
                 if (res.data.errcode) {
                     throw new ApiError(`WeChat API Error: ${res.data.errmsg}`, res.status, res.data);
                 }
@@ -131,7 +131,7 @@ export class WeChatService {
         logger.info(`Creating draft '${article.title}'...`);
         try {
             const response = await retry(async () => {
-                const res = await this.http.post(url, data);
+                const res = await this.http.post(url, data, { proxy: false });
                 if (res.data.errcode) {
                     throw new ApiError(`WeChat API Error: ${res.data.errmsg}`, res.status, res.data);
                 }
@@ -166,7 +166,7 @@ export class WeChatService {
         logger.info(`Publishing draft with media_id '${mediaId}'...`);
         try {
             const response = await retry(async () => {
-                const res = await this.http.post(url, data);
+                const res = await this.http.post(url, data, { proxy: false });
                 if (res.data.errcode) {
                     throw new ApiError(`WeChat API Error: ${res.data.errmsg}`, res.status, res.data);
                 }
@@ -197,7 +197,7 @@ export class WeChatService {
         logger.info(`Checking publish status for publish_id '${publishId}'...`);
         try {
             const response = await retry(async () => {
-                const res = await this.http.post(url, data);
+                const res = await this.http.post(url, data, { proxy: false });
                 if (res.data.errcode) {
                     throw new ApiError(`WeChat API Error: ${res.data.errmsg}`, res.status, res.data);
                 }
@@ -228,7 +228,7 @@ export class WeChatService {
         logger.debug(`Checking existence of draft '${mediaId}'...`);
         try {
             const response = await retry(async () => {
-                const res = await this.http.post(url, data);
+                const res = await this.http.post(url, data, { proxy: false });
                 if (res.data.errcode) {
                     if (res.data.errcode === 40007) { // Invalid media_id - NOT RETRYABLE
                         return null; // Return null directly without throwing ApiError for retry condition
@@ -280,7 +280,7 @@ export class WeChatService {
         logger.info(`Updating draft '${mediaId}' (index: ${index})...`);
         try {
             const response = await retry(async () => {
-                const res = await this.http.post(url, data);
+                const res = await this.http.post(url, data, { proxy: false });
                 if (res.data.errcode) {
                     throw new ApiError(`WeChat API Error: ${res.data.errmsg}`, res.status, res.data);
                 }
@@ -314,6 +314,7 @@ export class WeChatService {
                 const response = await this.http.post(url, data, {
                     responseType: 'stream',
                     validateStatus: (status) => status < 500,
+                    proxy: false
                 });
 
                 const contentType = response.headers['content-type'];
@@ -351,7 +352,7 @@ export class WeChatService {
         logger.info(`Deleting published article '${articleId}'...`);
         try {
             await retry(async () => {
-                const res = await this.http.post(url, data);
+                const res = await this.http.post(url, data, { proxy: false });
                 if (res.data.errcode) {
                     throw new ApiError(`WeChat API Error: ${res.data.errmsg}`, res.status, res.data);
                 }
@@ -384,7 +385,7 @@ export class WeChatService {
         logger.info(`Batch getting published articles (offset: ${offset}, count: ${count})...`);
         try {
             const response = await retry(async () => {
-                const res = await this.http.post(url, data);
+                const res = await this.http.post(url, data, { proxy: false });
                 if (res.data.errcode) {
                     throw new ApiError(`WeChat API Error: ${res.data.errmsg}`, res.status, res.data);
                 }
@@ -414,7 +415,7 @@ export class WeChatService {
         logger.info(`Deleting draft '${mediaId}'...`);
         try {
             await retry(async () => {
-                const res = await this.http.post(url, data);
+                const res = await this.http.post(url, data, { proxy: false });
                 if (res.data.errcode) {
                     throw new ApiError(`WeChat API Error: ${res.data.errmsg}`, res.status, res.data);
                 }
@@ -447,7 +448,7 @@ export class WeChatService {
         logger.info(`Batch getting drafts (offset: ${offset}, count: ${count})...`);
         try {
             const response = await retry(async () => {
-                const res = await this.http.post(url, data);
+                const res = await this.http.post(url, data, { proxy: false });
                 if (res.data.errcode) {
                     throw new ApiError(`WeChat API Error: ${res.data.errmsg}`, res.status, res.data);
                 }

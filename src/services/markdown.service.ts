@@ -40,7 +40,14 @@ export class MarkdownService {
         try {
             if (this.isUrl(src)) {
                 logger.debug(`Downloading image from URL: ${src}`);
-                const response = await axios.get(src, {responseType: 'arraybuffer'});
+                const response = await axios.get(src, {
+                    responseType: 'arraybuffer',
+                    headers: {
+                        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                        'Referer': new URL(src).origin
+                    },
+                    proxy: false
+                });
                 buffer = Buffer.from(response.data);
             } else {
                 const imagePath = path.resolve(path.dirname(articlePath), src);
@@ -83,55 +90,6 @@ export class MarkdownService {
             logger.error(`Failed to parse front matter. Error: ${error.message}`);
             throw error; // Re-throw to propagate the error
         }
-    }
-
-    private getRenderer(): Renderer {
-        const renderer = new Renderer();
-
-        renderer.heading = ({ text, depth }: any) => {
-             const styles: Record<number, string> = {
-                 1: 'font-size: 24px; font-weight: bold; margin-top: 30px; margin-bottom: 15px; text-align: center; color: #333;',
-                 2: 'font-size: 20px; font-weight: bold; margin-top: 25px; margin-bottom: 15px; border-left: 4px solid #42b983; padding-left: 10px; color: #333;',
-                 3: 'font-size: 18px; font-weight: bold; margin-top: 20px; margin-bottom: 10px; color: #333;',
-             };
-             const style = styles[depth as number] || styles[3];
-             return `<h${depth} style="${style}">${text}</h${depth}>`;
-        };
-        
-        renderer.paragraph = ({ text }: any) => {
-             return `<p style="font-size: 16px; line-height: 1.8; margin-bottom: 20px; color: #3f3f3f; text-align: justify;">${text}</p>`;
-        };
-        
-        renderer.blockquote = ({ text }: any) => {
-            return `<blockquote style="border-left: 4px solid #dfe2e5; padding: 10px 15px; color: #6a737d; background-color: #f8f9fa; margin-bottom: 20px; font-style: italic;">${text}</blockquote>`;
-        };
-        
-        renderer.code = ({ text }: any) => {
-             return `<pre style="background-color: #f6f8fa; padding: 16px; overflow: auto; border-radius: 6px; margin-bottom: 20px;"><code style="font-family: monospace; font-size: 14px; color: #333;">${text}</code></pre>`;
-        };
-
-        renderer.codespan = ({ text }: any) => {
-             return `<code style="background-color: rgba(27,31,35,0.05); padding: 2px 4px; border-radius: 4px; font-family: monospace; color: #e96900; font-size: 90%;">${text}</code>`;
-        };
-
-        renderer.list = ({ body, ordered }: any) => {
-             const type = ordered ? 'ol' : 'ul';
-             return `<${type} style="margin-bottom: 20px; padding-left: 20px; color: #3f3f3f;">${body}</${type}>`;
-        };
-        
-        renderer.listitem = ({ text }: any) => {
-             return `<li style="line-height: 1.8; margin-bottom: 5px; font-size: 16px;">${text}</li>`;
-        };
-        
-        renderer.image = ({ href, title, text }: any) => {
-            return `<img src="${href}" alt="${text}" style="max-width: 100%; height: auto; border-radius: 4px; display: block; margin: 20px auto; box-shadow: 0 2px 4px rgba(0,0,0,0.1);" title="${title || ''}">`;
-        };
-        
-        renderer.strong = ({ text }: any) => {
-            return `<strong style="font-weight: bold; color: #333;">${text}</strong>`;
-        };
-
-        return renderer;
     }
 
     public async convert(markdown: string, articlePath: string, defaultAuthor?: string, defaultDigest?: string): Promise<{
@@ -183,9 +141,14 @@ export class MarkdownService {
             }
 
             if (needsUpload) {
-                // Resize to 1440px width (standard high quality), preserve aspect ratio, high JPEG quality
+                // Resize to 1440x612 (2.35:1 aspect ratio) which is preferred by WeChat
+                // Use 'cover' strategy to crop if necessary
                 const thumbBuffer = await sharp(coverImageBuffer)
-                    .resize({ width: 1440, withoutEnlargement: true })
+                    .resize({ 
+                        width: 1440, 
+                        height: 612,
+                        fit: 'cover'
+                    })
                     .jpeg({ quality: 90 })
                     .toBuffer();
                 const result = await this.wechatService.addPermanentMaterial(thumbBuffer, 'image', `${baseName}.jpg`, 'image/jpeg');
@@ -200,19 +163,43 @@ export class MarkdownService {
         const firstH1Index = tokens.findIndex(t => t.type === 'heading' && t.depth === 1);
         
         if (firstH1Index !== -1) {
-            let imageTokenIndex = -1;
-            if (tokens[firstH1Index + 1]?.type === 'image') {
-                imageTokenIndex = firstH1Index + 1;
-            } else if (tokens[firstH1Index + 1]?.type === 'space' && tokens[firstH1Index + 2]?.type === 'image') {
-                imageTokenIndex = firstH1Index + 2;
+            let potentialImageTokenIndex = firstH1Index + 1;
+            
+            // Skip space if present
+            if (tokens[potentialImageTokenIndex]?.type === 'space') {
+                potentialImageTokenIndex++;
             }
 
-            if (imageTokenIndex !== -1) {
-                const imageToken = tokens[imageTokenIndex] as Tokens.Image;
-                logger.info(`Removing cover image '${imageToken.href}' from article body.`);
-                tokens.splice(imageTokenIndex, 1);
-                if (tokens[imageTokenIndex - 1]?.type === 'space' && imageTokenIndex > 0) {
-                    tokens.splice(imageTokenIndex - 1, 1);
+            const token = tokens[potentialImageTokenIndex];
+            let isCoverImage = false;
+
+            if (token?.type === 'image') {
+                isCoverImage = true;
+            } else if (token?.type === 'paragraph' && token.tokens && token.tokens.length === 1) {
+                const child = token.tokens[0];
+                if (child.type === 'image') {
+                    isCoverImage = true;
+                } else if (child.type === 'text') {
+                    // Handle broken image syntax (e.g. spaces in filename) parsed as text
+                    // Regex to match strictly ![]() pattern
+                    if (/^!\[.*\]\(.*\)$/.test(child.text.trim())) {
+                        isCoverImage = true;
+                    }
+                }
+            }
+
+            if (isCoverImage) {
+                const href = (token.type === 'image') 
+                    ? (token as Tokens.Image).href 
+                    : ((token.tokens![0] as any).href || (token.tokens![0] as Tokens.Text).text);
+                
+                logger.info(`Removing cover image '${href}' from article body.`);
+                
+                tokens.splice(potentialImageTokenIndex, 1);
+                
+                // If we skipped a space, remove it too so we don't have extra spacing
+                if (potentialImageTokenIndex > firstH1Index + 1) {
+                     tokens.splice(firstH1Index + 1, 1);
                 }
             }
 
@@ -264,13 +251,14 @@ export class MarkdownService {
                     token.href = url;
                 }
             } catch (error: any) {
-                logger.warn(`Could not upload image '${token.href}', leaving original source. Error: ${error.message}`);
+                logger.error(`Failed to process image '${token.href}'. Error: ${error.message}`);
+                throw error;
             }
         }
 
         let html: string;
         try {
-            html = marked.parser(tokens, { renderer: this.getRenderer() });
+            html = marked.parser(tokens);
         } catch (error: any) {
             logger.error(`Error during marked.parser: ${error.message}`);
             throw error; // Re-throw to propagate

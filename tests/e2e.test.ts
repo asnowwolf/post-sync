@@ -205,7 +205,7 @@ describe('End-to-End Test for post-sync CLI (Full Verification)', () => {
     }, 60000);
 
     it('should run the publish command successfully after creating drafts', async () => {
-        const command = `${CLI_ENTRY} publish "${TEST_DATA_PATH}"`;
+        const command = `${CLI_ENTRY} publish "${TEST_DATA_PATH}" -y`;
 
         try {
             const { stdout, stderr } = await execPromise(command, {
@@ -241,7 +241,7 @@ describe('End-to-End Test for post-sync CLI (Full Verification)', () => {
         // Clear the database for a clean run of the post command
         await fs.rm(_tempDbPathGlobal, { force: true });
 
-        const command = `${CLI_ENTRY} post "${TEST_DATA_PATH}"`;
+        const command = `${CLI_ENTRY} post "${TEST_DATA_PATH}" -y`;
 
         try {
             const { stdout, stderr } = await execPromise(command, {

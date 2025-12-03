@@ -194,6 +194,7 @@ program
     .command('publish <path>')
     .description('发布一篇或多篇已创建的草稿')
     .option('--profile <id>', '指定要使用的配置 profile ID')
+    .option('-y, --yes', '跳过确认提示')
     .action(async (rawPath, options) => {
         logger.info(`'publish' command called for path: ${rawPath}`);
         logger.debug('Options:', options);
@@ -218,6 +219,15 @@ program
             if (files.length === 0) {
                 logger.warn('No Markdown files found at the specified path.');
                 return;
+            }
+
+            if (!options.yes) {
+                const warningMsg = '声明：此发布功能无法支持原创声明、赞赏等功能，如果需要这些功能，请手动发布。\n确认要继续发布吗？';
+                const confirmed = await confirmAction(warningMsg);
+                if (!confirmed) {
+                    logger.info('Publish operation cancelled.');
+                    return;
+                }
             }
 
             for (const file of files) {
@@ -257,6 +267,7 @@ program
     .command('post <path>')
     .description('一键处理并发布文章')
     .option('--profile <id>', '指定要使用的配置 profile ID')
+    .option('-y, --yes', '跳过确认提示')
     .action(async (rawPath, options) => {
         logger.info(`'post' command called for path: ${rawPath}`);
         logger.debug('Options:', options);
@@ -283,6 +294,15 @@ program
             if (files.length === 0) {
                 logger.warn('No Markdown files found at the specified path.');
                 return;
+            }
+
+            if (!options.yes) {
+                const warningMsg = '声明：此发布功能无法支持原创声明、赞赏等功能，如果需要这些功能，请手动发布。\n确认要继续发布吗？';
+                const confirmed = await confirmAction(warningMsg);
+                if (!confirmed) {
+                    logger.info('Post operation cancelled.');
+                    return;
+                }
             }
 
             for (const file of files) {

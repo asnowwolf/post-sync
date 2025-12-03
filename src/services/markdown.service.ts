@@ -98,22 +98,87 @@ export class MarkdownService {
         }
     }
 
+    private adjustBlockquoteMargins(tokens: any[]) {
+        for (let i = 0; i < tokens.length; i++) {
+            const token = tokens[i];
+
+            if (token.type === 'blockquote_open') {
+                let blockquoteLevel = token.level;
+                let lastBlockChildToken = null;
+                
+                // Find the corresponding blockquote_close and the last block-level child within it
+                let j = i + 1;
+                while (j < tokens.length) {
+                    const currentToken = tokens[j];
+
+                    if (currentToken.type === 'blockquote_open' && currentToken.level > blockquoteLevel) {
+                        // Skip nested blockquote content
+                        let nestedBlockquoteLevel = currentToken.level;
+                        let k = j + 1;
+                        while (k < tokens.length && !(tokens[k].type === 'blockquote_close' && tokens[k].level === nestedBlockquoteLevel)) {
+                            k++;
+                        }
+                        j = k; // Jump past the nested blockquote
+                        continue;
+                    }
+
+                    if (currentToken.type === 'blockquote_close' && currentToken.level === blockquoteLevel) {
+                        // Found the closing tag for the current blockquote
+                        break;
+                    }
+
+                    // Consider only direct block-level children (level == blockquoteLevel + 1)
+                    // list items are transformed to paragraphs, so 'paragraph_open' covers them
+                    if (currentToken.level === blockquoteLevel + 1 && (
+                        currentToken.type === 'paragraph_open' ||
+                        currentToken.type === 'heading_open' ||
+                        currentToken.type === 'fence'
+                    )) {
+                        lastBlockChildToken = currentToken;
+                    }
+                    j++;
+                }
+
+                if (lastBlockChildToken) {
+                    lastBlockChildToken.isLastBlockChildInBlockquote = true;
+                }
+
+                // Move the outer loop cursor past this blockquote
+                i = j;
+            }
+        }
+    }
+
     private injectInlineStyles(tokens: any[]) {
         for (const token of tokens) {
+            let style = '';
+
             if (token.type === 'paragraph_open') {
-                token.attrSet('style', `${this.GLOBAL_FONT} ${this.BASE_TEXT_STYLE} margin-bottom: 20px;`);
+                style = `${this.GLOBAL_FONT} ${this.BASE_TEXT_STYLE} margin-bottom: 20px;`;
+                if (token.isLastBlockChildInBlockquote) {
+                    style = style.replace('margin-bottom: 20px;', 'margin-bottom: 0;');
+                }
+                token.attrSet('style', style);
             } else if (token.type === 'heading_open') {
                 if (token.tag === 'h1') {
-                    token.attrSet('style', `${this.GLOBAL_FONT} font-size: 24px; font-weight: bold; margin: 30px 0 20px; text-align: center; color: #222;`);
+                    style = `${this.GLOBAL_FONT} font-size: 24px; font-weight: bold; margin: 30px 0 20px; text-align: center; color: #222;`;
                 } else if (token.tag === 'h2') {
-                    token.attrSet('style', `${this.GLOBAL_FONT} font-size: 20px; font-weight: bold; margin: 25px 0 15px; border-bottom: 2px solid #e0b656; padding-bottom: 8px; color: #222;`);
+                    style = `${this.GLOBAL_FONT} font-size: 20px; font-weight: bold; margin: 25px 0 15px; border-bottom: 2px solid #e0b656; padding-bottom: 8px; color: #222;`;
                 } else if (token.tag === 'h3') {
-                    token.attrSet('style', `${this.GLOBAL_FONT} font-size: 18px; font-weight: bold; margin: 20px 0 10px; color: #333;`);
+                    style = `${this.GLOBAL_FONT} font-size: 18px; font-weight: bold; margin: 20px 0 10px; color: #333;`;
                 }
+                if (token.isLastBlockChildInBlockquote) {
+                    style = style.replace(/margin: (\d+)px 0 (\d+)px;/, 'margin: $1px 0 0;'); // Adjust existing margin
+                }
+                token.attrSet('style', style);
             } else if (token.type === 'blockquote_open') {
-                token.attrSet('style', `${this.GLOBAL_FONT} border-left: 5px solid #d4af37; background-color: #fffaf0; padding: 20px; color: #555; margin: 25px 0; font-style: italic; border-radius: 4px;`);
+                token.attrSet('style', `${this.GLOBAL_FONT} border-left: 5px solid #d4af37; background-color: #fffaf0; padding: 20px; color: #555; margin: 25px 0 20px; font-family: '楷体', KaiTi; border-radius: 4px;`);
             } else if (token.type === 'fence') {
-                 token.attrSet('style', `${this.GLOBAL_FONT} background-color: #f8f8f8; padding: 18px; border-radius: 8px; overflow: auto; font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, Courier, monospace; font-size: 15px; margin-bottom: 20px; display: block;`);
+                style = `${this.GLOBAL_FONT} background-color: #f8f8f8; padding: 18px; border-radius: 8px; overflow: auto; font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, Courier, monospace; font-size: 15px; margin-bottom: 20px; display: block;`;
+                if (token.isLastBlockChildInBlockquote) {
+                    style = style.replace('margin-bottom: 20px;', 'margin-bottom: 0;');
+                }
+                token.attrSet('style', style);
             }
         }
     }
@@ -264,6 +329,9 @@ export class MarkdownService {
                 title = firstH1Content;
             }
         }
+
+        // Adjust Blockquote Margins for last child
+        this.adjustBlockquoteMargins(tokens);
 
         // Inject Inline Styles (Generic)
         this.injectInlineStyles(tokens);

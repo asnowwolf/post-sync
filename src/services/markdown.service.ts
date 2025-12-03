@@ -122,21 +122,21 @@ export class MarkdownService {
             
             if (token.type === 'bullet_list_open') {
                 listStack.push({ type: 'ul', count: 0, level: listStack.length });
-                token.tag = 'div';
+                token.tag = 'section'; // Changed from div to section
                 token.attrSet('style', 'margin-bottom: 15px;'); 
             } else if (token.type === 'ordered_list_open') {
                 const start = token.attrGet('start');
                 listStack.push({ type: 'ol', count: start ? parseInt(start, 10) : 1, level: listStack.length });
-                token.tag = 'div';
+                token.tag = 'section'; // Changed from div to section
                 token.attrSet('style', 'margin-bottom: 15px;');
             } else if (token.type === 'bullet_list_close' || token.type === 'ordered_list_close') {
                 listStack.pop();
-                token.tag = 'div';
+                token.tag = 'section'; // Changed from div to section
             } else if (token.type === 'list_item_open') {
-                token.tag = 'div';
+                token.tag = 'section'; // Changed from div to section
                 token.attrSet('style', 'margin-bottom: 5px;'); // Item container style
             } else if (token.type === 'list_item_close') {
-                token.tag = 'div';
+                token.tag = 'section'; // Changed from div to section
             } else if (token.type === 'paragraph_open') {
                 if (listStack.length > 0) {
                     if (i > 0 && tokens[i-1].type === 'list_item_open') {
@@ -264,7 +264,7 @@ export class MarkdownService {
         // Inject Inline Styles (Generic)
         this.injectInlineStyles(tokens);
 
-        // Transform Lists (Simulate with div/p) - Overwrites paragraph styles in lists
+        // Transform Lists (Simulate with section/p) - Overwrites paragraph styles in lists
         this.transformListTokens(tokens);
 
         // Process Images in body
@@ -325,7 +325,8 @@ export class MarkdownService {
             throw error; 
         }
         
-        const wrappedHtml = `<div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Georgia, 'Times New Roman', serif; font-size: 17px; line-height: 1.8; color: #333; letter-spacing: 0.05em; padding: 25px;">${html}</div>`;
+        // Use section instead of div for wrapper
+        const wrappedHtml = `<section style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Georgia, 'Times New Roman', serif; font-size: 17px; line-height: 1.8; color: #333; letter-spacing: 0.05em; padding: 25px;">${html}</section>`;
 
         let resolvedDigest = attributes['digest'] || attributes?.cover?.prompt || defaultDigest;
         

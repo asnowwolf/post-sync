@@ -94,6 +94,32 @@ export class MarkdownService {
         }
     }
 
+    private injectInlineStyles(tokens: any[]) {
+        for (const token of tokens) {
+            if (token.type === 'bullet_list_open') {
+                token.attrSet('style', 'list-style-type: disc; padding-left: 20px; margin-bottom: 10px;');
+            } else if (token.type === 'ordered_list_open') {
+                token.attrSet('style', 'list-style-type: decimal; padding-left: 20px; margin-bottom: 10px;');
+            } else if (token.type === 'list_item_open') {
+                token.attrSet('style', 'line-height: 1.6; margin-bottom: 5px;');
+            } else if (token.type === 'paragraph_open') {
+                token.attrSet('style', 'font-size: 16px; line-height: 1.6; margin-bottom: 15px; text-align: justify;');
+            } else if (token.type === 'heading_open') {
+                if (token.tag === 'h1') {
+                    token.attrSet('style', 'font-size: 24px; font-weight: bold; margin-top: 30px; margin-bottom: 15px; text-align: center;');
+                } else if (token.tag === 'h2') {
+                    token.attrSet('style', 'font-size: 20px; font-weight: bold; margin-top: 25px; margin-bottom: 15px; border-bottom: 1px solid #eaecef; padding-bottom: 5px;');
+                } else if (token.tag === 'h3') {
+                    token.attrSet('style', 'font-size: 18px; font-weight: bold; margin-top: 20px; margin-bottom: 10px;');
+                }
+            } else if (token.type === 'blockquote_open') {
+                token.attrSet('style', 'border-left: 4px solid #dfe2e5; padding: 10px 15px; color: #6a737d; background-color: #f8f9fa; margin-bottom: 15px; border-radius: 2px;');
+            } else if (token.type === 'fence') {
+                 token.attrSet('style', 'background-color: #f6f8fa; padding: 16px; border-radius: 6px; overflow: auto; font-family: monospace; font-size: 14px; margin-bottom: 15px; display: block;');
+            }
+        }
+    }
+
     public async convert(markdown: string, articlePath: string, defaultAuthor?: string, defaultDigest?: string): Promise<{
         html: string;
         thumb_media_id: string | null;
@@ -155,18 +181,15 @@ export class MarkdownService {
         }
 
         // Title Extraction Logic
-        // Priority 1: Frontmatter title
         let title: string | undefined = attributes['title'];
 
         if (!title) {
-            // Priority 2: Unique H1
             let h1Count = 0;
             let firstH1Content = '';
             
             for (let i = 0; i < tokens.length; i++) {
                 if (tokens[i].type === 'heading_open' && tokens[i].tag === 'h1') {
                     h1Count++;
-                    // The content of the header is in the next inline token
                     if (i + 1 < tokens.length && tokens[i + 1].type === 'inline') {
                         firstH1Content = tokens[i + 1].content;
                     }
@@ -178,14 +201,17 @@ export class MarkdownService {
             }
         }
 
-        // Note: H1 removal logic and cover image removal logic have been removed.
-        // The user manages content structure manually via source Markdown.
+        // Inject Inline Styles
+        this.injectInlineStyles(tokens);
 
         // Process Images in body
         for (const token of tokens) {
             if (token.type === 'inline' && token.children) {
                 for (const child of token.children) {
                     if (child.type === 'image') {
+                        // Inject Image Style
+                        child.attrSet('style', 'max-width: 100%; height: auto; border-radius: 4px; display: block; margin: 10px auto;');
+                        
                         const src = child.attrGet('src');
                         if (src) {
                             try {

@@ -269,6 +269,7 @@ export class MarkdownService {
         const tokens = this.md.parse(body, {});
         
         let thumb_media_id: string | null = null;
+        let coverImageUrl: string | null = null;
 
         const dir = path.dirname(articlePath);
         const baseName = path.basename(articlePath, path.extname(articlePath));
@@ -289,6 +290,7 @@ export class MarkdownService {
                 if (exists) {
                     needsUpload = false;
                     thumb_media_id = material.media_id;
+                    coverImageUrl = material.url;
                     logger.info(`Cover image '${baseName}.png' exists on server and content unchanged. Using cached media_id.`);
                 }
             }
@@ -304,6 +306,7 @@ export class MarkdownService {
                     .toBuffer();
                 const result = await this.wechatService.addPermanentMaterial(thumbBuffer, 'image', `${baseName}.jpg`, 'image/jpeg');
                 thumb_media_id = result.media_id;
+                coverImageUrl = result.url;
                 this.dbService.saveMaterial(coverImagePath, hash, thumb_media_id, result.url);
             }
         } catch (error: any) {
@@ -417,7 +420,12 @@ export class MarkdownService {
         }
         
         // Return HTML without wrapper div/section
-        const wrappedHtml = html;
+        let wrappedHtml = html;
+
+        if (coverImageUrl) {
+            const coverImageHtml = `<img src="${coverImageUrl}" style="display: block; width: 100%; margin-bottom: 20px; border-radius: 8px; box-shadow: 0 5px 15px rgba(0,0,0,0.15);" />`;
+            wrappedHtml = coverImageHtml + wrappedHtml;
+        }
 
         let resolvedDigest = attributes['digest'] || attributes?.cover?.prompt || defaultDigest;
         

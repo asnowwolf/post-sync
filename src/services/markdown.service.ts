@@ -12,6 +12,10 @@ import * as crypto from 'crypto';
 
 export class MarkdownService {
     private md: MarkdownIt;
+    
+    // Global typography settings to replace the wrapper container
+    private readonly GLOBAL_FONT = "font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Georgia, 'Times New Roman', serif; letter-spacing: 0.05em;";
+    private readonly BASE_TEXT_STYLE = "font-size: 17px; line-height: 1.8; color: #333; text-align: justify;";
 
     constructor(private wechatService: WeChatService, private dbService: DbService) {
         this.md = new MarkdownIt({
@@ -97,19 +101,19 @@ export class MarkdownService {
     private injectInlineStyles(tokens: any[]) {
         for (const token of tokens) {
             if (token.type === 'paragraph_open') {
-                token.attrSet('style', 'font-size: 17px; line-height: 1.8; margin-bottom: 20px; text-align: justify; letter-spacing: 0.05em; color: #333;');
+                token.attrSet('style', `${this.GLOBAL_FONT} ${this.BASE_TEXT_STYLE} margin-bottom: 20px;`);
             } else if (token.type === 'heading_open') {
                 if (token.tag === 'h1') {
-                    token.attrSet('style', 'font-size: 24px; font-weight: bold; margin: 30px 0 20px; text-align: center; color: #222;');
+                    token.attrSet('style', `${this.GLOBAL_FONT} font-size: 24px; font-weight: bold; margin: 30px 0 20px; text-align: center; color: #222;`);
                 } else if (token.tag === 'h2') {
-                    token.attrSet('style', 'font-size: 20px; font-weight: bold; margin: 25px 0 15px; border-bottom: 2px solid #e0b656; padding-bottom: 8px; color: #222;');
+                    token.attrSet('style', `${this.GLOBAL_FONT} font-size: 20px; font-weight: bold; margin: 25px 0 15px; border-bottom: 2px solid #e0b656; padding-bottom: 8px; color: #222;`);
                 } else if (token.tag === 'h3') {
-                    token.attrSet('style', 'font-size: 18px; font-weight: bold; margin: 20px 0 10px; color: #333;');
+                    token.attrSet('style', `${this.GLOBAL_FONT} font-size: 18px; font-weight: bold; margin: 20px 0 10px; color: #333;`);
                 }
             } else if (token.type === 'blockquote_open') {
-                token.attrSet('style', 'border-left: 5px solid #d4af37; background-color: #fffaf0; padding: 20px; color: #555; margin: 25px 0; font-style: italic; border-radius: 4px;');
+                token.attrSet('style', `${this.GLOBAL_FONT} border-left: 5px solid #d4af37; background-color: #fffaf0; padding: 20px; color: #555; margin: 25px 0; font-style: italic; border-radius: 4px;`);
             } else if (token.type === 'fence') {
-                 token.attrSet('style', 'background-color: #f8f8f8; padding: 18px; border-radius: 8px; overflow: auto; font-family: \'SFMono-Regular\', Consolas, \'Liberation Mono\', Menlo, Courier, monospace; font-size: 15px; margin-bottom: 20px; display: block;');
+                 token.attrSet('style', `${this.GLOBAL_FONT} background-color: #f8f8f8; padding: 18px; border-radius: 8px; overflow: auto; font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, Courier, monospace; font-size: 15px; margin-bottom: 20px; display: block;`);
             }
         }
     }
@@ -120,25 +124,24 @@ export class MarkdownService {
         for (let i = 0; i < tokens.length; i++) {
             const token = tokens[i];
             
+            // Hide all list container tags to flatten the structure
             if (token.type === 'bullet_list_open') {
                 listStack.push({ type: 'ul', count: 0, level: listStack.length });
-                token.tag = 'section'; // Changed from div to section
-                token.attrSet('style', 'margin-bottom: 15px;'); 
+                token.hidden = true;
             } else if (token.type === 'ordered_list_open') {
                 const start = token.attrGet('start');
                 listStack.push({ type: 'ol', count: start ? parseInt(start, 10) : 1, level: listStack.length });
-                token.tag = 'section'; // Changed from div to section
-                token.attrSet('style', 'margin-bottom: 15px;');
+                token.hidden = true;
             } else if (token.type === 'bullet_list_close' || token.type === 'ordered_list_close') {
                 listStack.pop();
-                token.tag = 'section'; // Changed from div to section
+                token.hidden = true;
             } else if (token.type === 'list_item_open') {
-                token.tag = 'section'; // Changed from div to section
-                token.attrSet('style', 'margin-bottom: 5px;'); // Item container style
+                token.hidden = true;
             } else if (token.type === 'list_item_close') {
-                token.tag = 'section'; // Changed from div to section
+                token.hidden = true;
             } else if (token.type === 'paragraph_open') {
                 if (listStack.length > 0) {
+                    // Check if this paragraph is the direct child of a list item
                     if (i > 0 && tokens[i-1].type === 'list_item_open') {
                          const ctx = listStack[listStack.length - 1];
                          let prefix = '';
@@ -172,7 +175,8 @@ export class MarkdownService {
                          }
                          
                          const indent = (ctx.level + 1) * 20; 
-                         token.attrSet('style', `font-size: 17px; line-height: 1.8; color: #333; margin: 0 0 0 ${indent}px; text-indent: -20px; padding-left: 0;`);
+                         // Apply flattened list item style with indentation and reduced bottom margin
+                         token.attrSet('style', `${this.GLOBAL_FONT} ${this.BASE_TEXT_STYLE} margin: 0 0 5px ${indent}px; text-indent: -20px; padding-left: 0;`);
                          token.hidden = false; 
                     }
                 }
@@ -264,7 +268,7 @@ export class MarkdownService {
         // Inject Inline Styles (Generic)
         this.injectInlineStyles(tokens);
 
-        // Transform Lists (Simulate with section/p) - Overwrites paragraph styles in lists
+        // Transform Lists (Flatten to p)
         this.transformListTokens(tokens);
 
         // Process Images in body
@@ -325,8 +329,8 @@ export class MarkdownService {
             throw error; 
         }
         
-        // Use section instead of div for wrapper
-        const wrappedHtml = `<section style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Georgia, 'Times New Roman', serif; font-size: 17px; line-height: 1.8; color: #333; letter-spacing: 0.05em; padding: 25px;">${html}</section>`;
+        // Return HTML without wrapper div/section
+        const wrappedHtml = html;
 
         let resolvedDigest = attributes['digest'] || attributes?.cover?.prompt || defaultDigest;
         

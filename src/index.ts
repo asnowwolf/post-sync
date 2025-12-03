@@ -222,7 +222,7 @@ program
             }
 
             if (!options.yes) {
-                const warningMsg = '声明：此发布功能无法支持原创声明、赞赏等功能，如果需要这些功能，请手动发布。\n确认要继续发布吗？';
+                const warningMsg = '声明：此发布功能无法支持原创声明、赞赏等功能，如果需要这些功能，请到公众号助手中手动开启它们后再来发布。\n确认要继续发布吗？';
                 const confirmed = await confirmAction(warningMsg);
                 if (!confirmed) {
                     logger.info('Publish operation cancelled.');
@@ -242,6 +242,32 @@ program
                     if (!draft) {
                         logger.warn(`No draft found for '${file}'. Please run 'create' first.`);
                         continue;
+                    }
+
+                    // Check if draft exists on server
+                    try {
+                        const draftOnServer = await wechatService.getDraft(draft.media_id);
+                        if (!draftOnServer) {
+                            logger.warn(`Draft for '${file}' (media_id: ${draft.media_id}) does not exist on server. Skipping publish.`);
+                            continue;
+                        }
+                    } catch (e: any) {
+                        logger.warn(`Failed to check draft existence for '${file}': ${e.message}. Skipping.`);
+                        continue;
+                    }
+
+                    // Check if already published successfully
+                    const existingPublication = dbService.findPublicationByDraftId(draft.id);
+                    if (existingPublication) {
+                        try {
+                            const status = await wechatService.getPublishStatus(existingPublication.publish_id);
+                            if (status.publish_status === 0) {
+                                logger.info(`Article '${file}' is already published successfully (publish_id: ${existingPublication.publish_id}). Skipping.`);
+                                continue;
+                            }
+                        } catch (e: any) {
+                            logger.warn(`Failed to check previous publication status for '${file}': ${e.message}. Will attempt to republish.`);
+                        }
                     }
 
                     const publishId = await wechatService.publishDraft(draft.media_id);
@@ -297,7 +323,7 @@ program
             }
 
             if (!options.yes) {
-                const warningMsg = '声明：此发布功能无法支持原创声明、赞赏等功能，如果需要这些功能，请手动发布。\n确认要继续发布吗？';
+                const warningMsg = '声明：此发布功能无法支持原创声明、赞赏等功能，如果需要这些功能，请到公众号助手中手动开启它们后再来发布。\n确认要继续发布吗？';
                 const confirmed = await confirmAction(warningMsg);
                 if (!confirmed) {
                     logger.info('Post operation cancelled.');
@@ -388,13 +414,31 @@ program
                     }
                     
                     if (draftEntry) {
-                        logger.info(`Attempting to publish draft for '${file}'...`);
-                        try {
-                            const publishId = await wechatService.publishDraft(draftEntry.media_id);
-                            dbService.insertPublication(draftEntry.id, publishId);
-                            logger.info(`Successfully submitted '${file}' for publication with publish_id: ${publishId}.`);
-                        } catch (e: any) {
-                            logger.warn(`Publishing failed (maybe already published?): ${e.message}`);
+                        // Check if already published successfully
+                        const existingPublication = dbService.findPublicationByDraftId(draftEntry.id);
+                        let alreadyPublished = false;
+                        
+                        if (existingPublication) {
+                            try {
+                                const status = await wechatService.getPublishStatus(existingPublication.publish_id);
+                                if (status.publish_status === 0) {
+                                    logger.info(`Article '${file}' is already published successfully (publish_id: ${existingPublication.publish_id}). Skipping publish.`);
+                                    alreadyPublished = true;
+                                }
+                            } catch (e: any) {
+                                logger.warn(`Failed to check previous publication status for '${file}': ${e.message}. Will attempt to republish.`);
+                            }
+                        }
+
+                        if (!alreadyPublished) {
+                            logger.info(`Attempting to publish draft for '${file}'...`);
+                            try {
+                                const publishId = await wechatService.publishDraft(draftEntry.media_id);
+                                dbService.insertPublication(draftEntry.id, publishId);
+                                logger.info(`Successfully submitted '${file}' for publication with publish_id: ${publishId}.`);
+                            } catch (e: any) {
+                                logger.warn(`Publishing failed (maybe already published?): ${e.message}`);
+                            }
                         }
                     } else {
                         logger.warn(`No draft available for '${file}' to publish.`);

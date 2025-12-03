@@ -172,10 +172,10 @@ export class WeChatService {
                 }
                 return res;
             }, {
-                delayMs: 15000,
+                delayMs: 6000,
                 backoffStrategy: 'exponential',
                 maxDelayMs: 60000,
-                maxAttempts: 4
+                maxAttempts: 10
             });
 
             logger.info(`Successfully submitted for publication. Publish ID: ${response.data.publish_id}`);

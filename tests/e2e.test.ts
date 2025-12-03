@@ -87,6 +87,11 @@ describe('End-to-End Test for post-sync CLI (Full Verification)', () => {
                     res.end(JSON.stringify({ media_id: 'mock_perm_media_id', url: 'http://mock-server/perm_image.jpg' }));
                 } else if (pathname === '/cgi-bin/draft/add') {
                     res.end(JSON.stringify({ media_id: 'mock_draft_media_id' }));
+                } else if (pathname === '/cgi-bin/draft/get') {
+                    // Mock getting a draft (simulate success)
+                    res.end(JSON.stringify({ 
+                        news_item: [{ title: 'Mock Article', thumb_media_id: 'mock_perm_media_id' }]
+                    }));
                 } else if (pathname === '/cgi-bin/freepublish/submit') {
                     res.end(JSON.stringify({ publish_id: 'mock_publish_id', errcode: 0, errmsg: 'ok' }));
                 } else if (pathname === '/cgi-bin/freepublish/get') {

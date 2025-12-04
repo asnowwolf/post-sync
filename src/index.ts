@@ -12,7 +12,7 @@ import * as path from 'path';
 import * as readline from 'readline';
 import * as crypto from 'crypto';
 
-// Function to prompt user for confirmation
+// 提示用户确认的函数
 async function confirmAction(query: string): Promise<boolean> {
     const rl = readline.createInterface({
         input: process.stdin,
@@ -20,7 +20,7 @@ async function confirmAction(query: string): Promise<boolean> {
     });
 
     return new Promise((resolve) => {
-        rl.question(query + ' (y/N): ', (answer) => {
+        rl.question(query + ' (是/否): ', (answer) => {
             rl.close();
             resolve(answer.toLowerCase() === 'y');
         });
@@ -54,9 +54,8 @@ program
     .option('--profile <id>', '指定要使用的配置 profile ID')
     .option('-y, --yes', '跳过所有确认提示，直接执行操作')
     .action(async (rawPath, options) => {
-        logger.debug("Executing create command action...");
-        logger.info(`'create' command called for path: ${rawPath}`);
-        logger.debug('Options:', options);
+        logger.debug("正在执行创建命令操作...");
+logger.debug('选项:', options);
 
         const summary = new BatchSummary('Create Drafts');
         let currentConfig;
@@ -67,35 +66,35 @@ program
 
         try {
             currentConfig = getConfig(options.profile);
-            logger.debug("Config loaded.");
+            logger.debug("配置已加载.");
             dbService = new DbService();
-            logger.debug("DbService initialized.");
+            logger.debug("DbService 已初始化.");
             wechatService = new WeChatService({
                 appId: currentConfig.appId,
                 appSecret: currentConfig.appSecret,
                 wechatApiBaseUrl: currentConfig.wechatApiBaseUrl,
             });
-            logger.debug("WeChatService initialized.");
+            logger.debug("WeChatService 已初始化.");
             markdownService = new MarkdownService(wechatService, dbService);
-            logger.debug("MarkdownService initialized.");
+            logger.debug("MarkdownService 已初始化.");
 
             const resolvedPath = path.resolve(process.cwd(), rawPath);
             files = await getFileList(resolvedPath);
 
             if (files.length === 0) {
-                logger.warn('No Markdown files found at the specified path.');
+                logger.warn('在指定路径未找到 Markdown 文件。');
                 return;
             }
 
             for (const file of files) {
                 try {
-                    logger.info(`Processing '${file}'...`);
+                    logger.info(`正在处理 '${file}'...`);
 
                     const markdownContent = await fs.promises.readFile(file, 'utf-8');
                     const {html, thumb_media_id, digest, author, title: extractedTitle} = await markdownService.convert(markdownContent, file, currentConfig.author);
 
                     if (!thumb_media_id) {
-                        const msg = `Could not generate a thumbnail for '${file}'. Skipping draft creation/update.`;
+                const msg = `无法为 '${file}' 生成缩略图。跳过草稿创建/更新。`;
                         logger.error(msg);
                         summary.addFailure(file, msg);
                         continue;
@@ -121,7 +120,7 @@ program
                         if (!draftOnServer) {
                             action = 'CREATE';
                             if (articleEntry && articleEntry.source_hash === hash) {
-                                logger.info(`Draft for '${file}' is missing on server. Will re-create.`);
+                                logger.info(`文件 '${file}' 的草稿在服务器上丢失。将重新创建。`);
                             }
                         } else {
                             if (articleEntry && articleEntry.source_hash === hash) {
@@ -133,7 +132,7 @@ program
                     }
 
                     if (action === 'SKIP') {
-                        logger.info(`Skipping '${file}' (content unchanged and draft exists).`);
+                        logger.info(`跳过文件 '${file}'（内容未更改且草稿已存在）。`);
                         summary.addSkipped();
                         continue;
                     }
@@ -154,7 +153,7 @@ program
                                 db.updateArticleHash(articleEntry.id, hash);
                             }
                         });
-                        logger.info(`Successfully updated draft for '${file}' (media_id: ${draftEntry.media_id}).`);
+                        logger.info(`成功更新文件 '${file}' 的草稿 (media_id: ${draftEntry.media_id})。`);
 
                     } else {
                         const media_id = await wechatService.createDraft({
@@ -170,27 +169,27 @@ program
                             if (articleEntry) {
                                 db.updateArticleHash(articleEntry.id, hash);
                                 db.insertDraft(articleEntry.id, media_id);
-                                logger.info(`Updated hash for '${file}' and created new draft with media_id: ${media_id}`);
+                                logger.info(`已更新文件 '${file}' 的哈希并创建了新的草稿，media_id: ${media_id}`);
                             } else {
                                 const result = db.insertArticle(file, hash);
                                 const articleId = result.lastInsertRowid as number;
                                 db.insertDraft(articleId, media_id);
-                                logger.info(`Inserted new article '${file}' and created draft with media_id: ${media_id}`);
+                                logger.info(`已插入新文章 '${file}' 并创建了草稿，media_id: ${media_id}`);
                             }
                         });
                     }
                     summary.addSuccess();
                 } catch (error: any) {
-                    logger.error(`Failed to process '${file}':`, error.message);
+                    logger.error(`处理文件 '${file}' 失败:`, error.message);
                     if (error.details) {
-                        logger.error('API Error Details:', JSON.stringify(error.details, null, 2));
+                        logger.error('API 错误详情:', JSON.stringify(error.details, null, 2));
                     }
                     summary.addFailure(file, error);
                 }
             }
             summary.report();
         } catch (error: any) {
-            logger.error('Initialization failed:', error.message);
+            logger.error('初始化失败:', error.message);
         } finally {
             if (dbService) {
                 dbService.close();
@@ -204,8 +203,8 @@ program
     .option('--profile <id>', '指定要使用的配置 profile ID')
     .option('-y, --yes', '跳过确认提示')
     .action(async (rawPath, options) => {
-        logger.info(`'publish' command called for path: ${rawPath}`);
-        logger.debug('Options:', options);
+        logger.info(`'publish' 命令已为路径调用: ${rawPath}`);
+        logger.debug('选项:', options);
 
         const summary = new BatchSummary('Publish Articles');
         let currentConfig;
@@ -226,7 +225,7 @@ program
             files = await getFileList(resolvedPath);
 
             if (files.length === 0) {
-                logger.warn('No Markdown files found at the specified path.');
+                logger.warn('在指定路径未找到 Markdown 文件。');
                 return;
             }
 
@@ -234,7 +233,7 @@ program
                 const warningMsg = '声明：此发布功能无法支持原创声明、赞赏等功能，如果需要这些功能，请到公众号助手中手动开启它们后再来发布。\n确认要继续发布吗？';
                 const confirmed = await confirmAction(warningMsg);
                 if (!confirmed) {
-                    logger.info('Publish operation cancelled.');
+                    logger.info('发布操作已取消。');
                     return;
                 }
             }
@@ -273,19 +272,11 @@ program
                         continue;
                     }
 
-                    // Check if already published successfully
                     const existingPublication = dbService.findPublicationByDraftId(draft.id);
                     if (existingPublication) {
-                        try {
-                            const status = await wechatService.getPublishStatus(existingPublication.publish_id);
-                            if (status.publish_status === 0) {
-                                logger.info(`Article '${file}' is already published successfully (publish_id: ${existingPublication.publish_id}). Skipping.`);
-                                summary.addSkipped();
-                                continue;
-                            }
-                        } catch (e: any) {
-                            logger.warn(`Failed to check previous publication status for '${file}': ${e.message}. Will attempt to republish.`);
-                        }
+                        logger.info(`Article '${file}' already has a publication record (publish_id: ${existingPublication.publish_id}). Skipping.`);
+                        summary.addSkipped();
+                        continue;
                     }
 
                     const publishId = await wechatService.publishDraft(draft.media_id);
@@ -295,14 +286,14 @@ program
                 } catch (error: any) {
                     logger.error(`Failed to publish '${file}':`, error.message);
                     if (error.details) {
-                        logger.error('API Error Details:', JSON.stringify(error.details, null, 2));
+                        logger.error('API 错误详情:', JSON.stringify(error.details, null, 2));
                     }
                     summary.addFailure(file, error);
                 }
             }
             summary.report();
         } catch (error: any) {
-            logger.error('Initialization failed:', error.message);
+            logger.error('初始化失败:', error.message);
         } finally {
             if (dbService) {
                 dbService.close();
@@ -317,7 +308,7 @@ program
     .option('-y, --yes', '跳过确认提示')
     .action(async (rawPath, options) => {
         logger.info(`'post' command called for path: ${rawPath}`);
-        logger.debug('Options:', options);
+        logger.debug('选项:', options);
 
         const summary = new BatchSummary('Post Articles (Create & Publish)');
         let currentConfig;
@@ -340,7 +331,7 @@ program
             files = await getFileList(resolvedPath);
 
             if (files.length === 0) {
-                logger.warn('No Markdown files found at the specified path.');
+                logger.warn('在指定路径未找到 Markdown 文件。');
                 return;
             }
 
@@ -355,13 +346,13 @@ program
 
             for (const file of files) {
                 try {
-                    logger.info(`Processing '${file}'...`);
+                    logger.info(`正在处理 '${file}'...`);
 
                     const markdownContent = await fs.promises.readFile(file, 'utf-8');
                     const { html, thumb_media_id, digest, author, title: extractedTitle } = await markdownService.convert(markdownContent, file, currentConfig.author);
 
                     if (!thumb_media_id) {
-                        const msg = `Could not generate a thumbnail for '${file}'. Skipping draft creation/update.`;
+                const msg = `无法为 '${file}' 生成缩略图。跳过草稿创建/更新。`;
                         logger.error(msg);
                         summary.addFailure(file, msg);
                         continue;
@@ -479,14 +470,14 @@ program
                 } catch (error: any) {
                     logger.error(`Failed to post '${file}':`, error.message);
                     if (error.details) {
-                        logger.error('API Error Details:', JSON.stringify(error.details, null, 2));
+                        logger.error('API 错误详情:', JSON.stringify(error.details, null, 2));
                     }
                     summary.addFailure(file, error);
                 }
             }
             summary.report();
         } catch (error: any) {
-            logger.error('Initialization failed:', error.message);
+            logger.error('初始化失败:', error.message);
         } finally {
             if (dbService) {
                 dbService.close();
@@ -500,7 +491,7 @@ program
     .option('--profile <id>', '指定要使用的配置 profile ID')
     .action(async (rawPath, options) => {
         logger.info(`'delete' command called for path: ${rawPath}`);
-        logger.debug('Options:', options);
+        logger.debug('选项:', options);
 
         const summary = new BatchSummary('Delete Articles');
         let currentConfig;
@@ -520,7 +511,7 @@ program
             const files = await getFileList(resolvedPath);
 
             if (files.length === 0) {
-                logger.warn('No Markdown files found at the specified path.');
+                logger.warn('在指定路径未找到 Markdown 文件。');
                 return;
             }
 
@@ -585,7 +576,7 @@ program
                 } catch (error: any) {
                     logger.error(`Failed to delete '${file}':`, error.message);
                     if (error.details) {
-                        logger.error('API Error Details:', JSON.stringify(error.details, null, 2));
+                        logger.error('API 错误详情:', JSON.stringify(error.details, null, 2));
                     }
                     summary.addFailure(file, error);
                 }
@@ -610,7 +601,7 @@ deleteAll
     .option('--profile <id>', '指定要使用的配置 profile ID')
     .action(async (options) => {
         logger.info(`'delete-all articles' command called.`);
-        logger.debug('Options:', options);
+        logger.debug('选项:', options);
 
         const summary = new BatchSummary('Delete All Published Articles');
         let currentConfig;
@@ -624,7 +615,7 @@ deleteAll
                 wechatApiBaseUrl: currentConfig.wechatApiBaseUrl,
             });
         } catch (error: any) {
-            logger.error('Initialization failed:', error.message);
+            logger.error('初始化失败:', error.message);
             return;
         }
 
@@ -713,7 +704,7 @@ deleteAll
         } catch (error: any) {
             logger.error('An error occurred during delete-all articles:', error.message);
             if (error.details) {
-                logger.error('API Error Details:', JSON.stringify(error.details, null, 2));
+                logger.error('API 错误详情:', JSON.stringify(error.details, null, 2));
             }
         }
     });
@@ -724,7 +715,7 @@ deleteAll
     .option('--profile <id>', '指定要使用的配置 profile ID')
     .action(async (options) => {
         logger.info(`'delete-all drafts' command called.`);
-        logger.debug('Options:', options);
+        logger.debug('选项:', options);
 
         const summary = new BatchSummary('Delete All Drafts');
         let currentConfig;
@@ -738,7 +729,7 @@ deleteAll
                 wechatApiBaseUrl: currentConfig.wechatApiBaseUrl,
             });
         } catch (error: any) {
-            logger.error('Initialization failed:', error.message);
+            logger.error('初始化失败:', error.message);
             return;
         }
 
@@ -827,7 +818,7 @@ deleteAll
         } catch (error: any) {
             logger.error('An error occurred during delete-all drafts:', error.message);
             if (error.details) {
-                logger.error('API Error Details:', JSON.stringify(error.details, null, 2));
+                logger.error('API 错误详情:', JSON.stringify(error.details, null, 2));
             }
         }
     });

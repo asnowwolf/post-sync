@@ -41,6 +41,31 @@ export async function retry<T>(
         try {
             return await fn();
         } catch (error: any) {
+            // Check for Quota Limit specific error
+            const isQuotaLimit = (
+                (error instanceof ApiError && (
+                    error.message.includes('reach max api daily quota limit') ||
+                    (error.details && error.details.errcode === 45009)
+                )) ||
+                (error?.message && error.message.includes('reach max api daily quota limit'))
+            );
+
+            if (isQuotaLimit) {
+                const now = new Date();
+                const target = new Date(now);
+                target.setDate(target.getDate() + 1);
+                target.setHours(0, 1, 0, 0);
+                const waitMs = target.getTime() - now.getTime();
+
+                logger.warn(`WeChat API daily quota reached. Waiting until ${target.toLocaleString()} before retrying...`);
+
+                await new Promise(resolve => setTimeout(resolve, waitMs));
+
+                // Decrement attempt so we don't exhaust retries due to this forced wait
+                attempt--;
+                continue;
+            }
+
             const shouldRetry = retryCondition(error) && attempt < maxAttempts;
 
             if (shouldRetry) {

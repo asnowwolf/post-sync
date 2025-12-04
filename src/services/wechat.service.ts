@@ -354,7 +354,7 @@ export class WeChatService {
             await retry(async () => {
                 const res = await this.http.post(url, data, { proxy: false });
                 if (res.data.errcode) {
-                    throw new ApiError(`WeChat API Error: ${res.data.errmsg}`, res.status, res.data);
+                    throw new ApiError(`WeChat API Error: ${res.data.errcode} ${res.data.errmsg}`, res.status, res.data);
                 }
                 return res;
             }, {
@@ -387,7 +387,7 @@ export class WeChatService {
             const response = await retry(async () => {
                 const res = await this.http.post(url, data, { proxy: false });
                 if (res.data.errcode) {
-                    throw new ApiError(`WeChat API Error: ${res.data.errmsg}`, res.status, res.data);
+                    throw new ApiError(`WeChat API Error: ${res.data.errcode} ${res.data.errmsg}`, res.status, res.data);
                 }
                 return res;
             }, {

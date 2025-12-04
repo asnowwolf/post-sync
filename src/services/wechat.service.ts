@@ -48,7 +48,7 @@ export class WeChatService {
             }, {
                 delayMs: 15000,
                 backoffStrategy: 'exponential',
-                maxDelayMs: 60000,
+                maxDelayMs: 600000,
                 maxAttempts: 4
             });
 
@@ -91,7 +91,7 @@ export class WeChatService {
             }, {
                 delayMs: 15000,
                 backoffStrategy: 'exponential',
-                maxDelayMs: 60000,
+                maxDelayMs: 600000,
                 maxAttempts: 4
             });
 
@@ -139,7 +139,7 @@ export class WeChatService {
             }, {
                 delayMs: 15000,
                 backoffStrategy: 'exponential',
-                maxDelayMs: 60000,
+                maxDelayMs: 600000,
                 maxAttempts: 4
             });
 
@@ -172,9 +172,9 @@ export class WeChatService {
                 }
                 return res;
             }, {
-                delayMs: 6000,
+                delayMs: 60000,
                 backoffStrategy: 'exponential',
-                maxDelayMs: 60000,
+                maxDelayMs: 600000,
                 maxAttempts: 10
             });
 
@@ -205,7 +205,7 @@ export class WeChatService {
             }, {
                 delayMs: 15000,
                 backoffStrategy: 'exponential',
-                maxDelayMs: 60000,
+                maxDelayMs: 600000,
                 maxAttempts: 4
             });
 
@@ -239,7 +239,7 @@ export class WeChatService {
             }, {
                 delayMs: 15000,
                 backoffStrategy: 'exponential',
-                maxDelayMs: 60000,
+                maxDelayMs: 600000,
                 maxAttempts: 4,
                 retryCondition: (error) => {
                     // Only retry for "请勿频繁请求" error, not for other API errors or 40007
@@ -288,7 +288,7 @@ export class WeChatService {
             }, {
                 delayMs: 15000,
                 backoffStrategy: 'exponential',
-                maxDelayMs: 60000,
+                maxDelayMs: 600000,
                 maxAttempts: 4
             });
 
@@ -360,7 +360,7 @@ export class WeChatService {
             }, {
                 delayMs: 15000,
                 backoffStrategy: 'exponential',
-                maxDelayMs: 60000,
+                maxDelayMs: 600000,
                 maxAttempts: 4
             });
             logger.info(`Successfully deleted published article '${articleId}'.`);
@@ -393,7 +393,7 @@ export class WeChatService {
             }, {
                 delayMs: 15000,
                 backoffStrategy: 'exponential',
-                maxDelayMs: 60000,
+                maxDelayMs: 600000,
                 maxAttempts: 4
             });
 
@@ -423,7 +423,7 @@ export class WeChatService {
             }, {
                 delayMs: 15000,
                 backoffStrategy: 'exponential',
-                maxDelayMs: 60000,
+                maxDelayMs: 600000,
                 maxAttempts: 4
             });
             logger.info(`Successfully deleted draft '${mediaId}'.`);
@@ -456,7 +456,7 @@ export class WeChatService {
             }, {
                 delayMs: 15000,
                 backoffStrategy: 'exponential',
-                maxDelayMs: 60000,
+                maxDelayMs: 600000,
                 maxAttempts: 4
             });
 

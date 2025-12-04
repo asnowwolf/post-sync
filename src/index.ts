@@ -4,6 +4,7 @@ import {getConfig} from './config.js';
 import {logger} from './logger.js';
 import {DbService} from './services/db.service.js';
 import {getFileHash, getFileList} from './utils/file.util.js';
+import {BatchSummary} from './utils/summary.util.js';
 import {MarkdownService} from './services/markdown.service.js';
 import {WeChatService} from './services/wechat.service.js';
 import * as fs from 'fs';
@@ -57,6 +58,7 @@ program
         logger.info(`'create' command called for path: ${rawPath}`);
         logger.debug('Options:', options);
 
+        const summary = new BatchSummary('Create Drafts');
         let currentConfig;
         let dbService: DbService | undefined;
         let wechatService;
@@ -93,7 +95,9 @@ program
                     const {html, thumb_media_id, digest, author, title: extractedTitle} = await markdownService.convert(markdownContent, file, currentConfig.author);
 
                     if (!thumb_media_id) {
-                        logger.error(`Could not generate a thumbnail for '${file}'. Skipping draft creation/update.`);
+                        const msg = `Could not generate a thumbnail for '${file}'. Skipping draft creation/update.`;
+                        logger.error(msg);
+                        summary.addFailure(file, msg);
                         continue;
                     }
 
@@ -130,6 +134,7 @@ program
 
                     if (action === 'SKIP') {
                         logger.info(`Skipping '${file}' (content unchanged and draft exists).`);
+                        summary.addSkipped();
                         continue;
                     }
                     
@@ -174,13 +179,16 @@ program
                             }
                         });
                     }
+                    summary.addSuccess();
                 } catch (error: any) {
                     logger.error(`Failed to process '${file}':`, error.message);
                     if (error.details) {
                         logger.error('API Error Details:', JSON.stringify(error.details, null, 2));
                     }
+                    summary.addFailure(file, error);
                 }
             }
+            summary.report();
         } catch (error: any) {
             logger.error('Initialization failed:', error.message);
         } finally {
@@ -199,6 +207,7 @@ program
         logger.info(`'publish' command called for path: ${rawPath}`);
         logger.debug('Options:', options);
 
+        const summary = new BatchSummary('Publish Articles');
         let currentConfig;
         let dbService: DbService | undefined;
         let wechatService;
@@ -234,13 +243,17 @@ program
                 try {
                     const articleEntry = dbService.findArticleByPath(file);
                     if (!articleEntry) {
-                        logger.warn(`Article for '${file}' not found in database. Please run 'create' first.`);
+                        const msg = `Article for '${file}' not found in database. Please run 'create' first.`;
+                        logger.warn(msg);
+                        summary.addFailure(file, msg);
                         continue;
                     }
 
                     const draft = dbService.findLatestDraftByArticleId(articleEntry.id);
                     if (!draft) {
-                        logger.warn(`No draft found for '${file}'. Please run 'create' first.`);
+                        const msg = `No draft found for '${file}'. Please run 'create' first.`;
+                        logger.warn(msg);
+                        summary.addFailure(file, msg);
                         continue;
                     }
 
@@ -248,11 +261,15 @@ program
                     try {
                         const draftOnServer = await wechatService.getDraft(draft.media_id);
                         if (!draftOnServer) {
-                            logger.warn(`Draft for '${file}' (media_id: ${draft.media_id}) does not exist on server. Skipping publish.`);
+                            const msg = `Draft for '${file}' (media_id: ${draft.media_id}) does not exist on server. Skipping publish.`;
+                            logger.warn(msg);
+                            summary.addFailure(file, msg);
                             continue;
                         }
                     } catch (e: any) {
-                        logger.warn(`Failed to check draft existence for '${file}': ${e.message}. Skipping.`);
+                        const msg = `Failed to check draft existence for '${file}': ${e.message}. Skipping.`;
+                        logger.warn(msg);
+                        summary.addFailure(file, msg);
                         continue;
                     }
 
@@ -263,6 +280,7 @@ program
                             const status = await wechatService.getPublishStatus(existingPublication.publish_id);
                             if (status.publish_status === 0) {
                                 logger.info(`Article '${file}' is already published successfully (publish_id: ${existingPublication.publish_id}). Skipping.`);
+                                summary.addSkipped();
                                 continue;
                             }
                         } catch (e: any) {
@@ -273,13 +291,16 @@ program
                     const publishId = await wechatService.publishDraft(draft.media_id);
                     dbService.insertPublication(draft.id, publishId);
                     logger.info(`Successfully submitted '${file}' for publication with publish_id: ${publishId}.`);
+                    summary.addSuccess();
                 } catch (error: any) {
                     logger.error(`Failed to publish '${file}':`, error.message);
                     if (error.details) {
                         logger.error('API Error Details:', JSON.stringify(error.details, null, 2));
                     }
+                    summary.addFailure(file, error);
                 }
             }
+            summary.report();
         } catch (error: any) {
             logger.error('Initialization failed:', error.message);
         } finally {
@@ -298,6 +319,7 @@ program
         logger.info(`'post' command called for path: ${rawPath}`);
         logger.debug('Options:', options);
 
+        const summary = new BatchSummary('Post Articles (Create & Publish)');
         let currentConfig;
         let dbService: DbService | undefined;
         let wechatService;
@@ -339,7 +361,9 @@ program
                     const { html, thumb_media_id, digest, author, title: extractedTitle } = await markdownService.convert(markdownContent, file, currentConfig.author);
 
                     if (!thumb_media_id) {
-                        logger.error(`Could not generate a thumbnail for '${file}'. Skipping draft creation/update.`);
+                        const msg = `Could not generate a thumbnail for '${file}'. Skipping draft creation/update.`;
+                        logger.error(msg);
+                        summary.addFailure(file, msg);
                         continue;
                     }
 
@@ -437,19 +461,30 @@ program
                                 dbService.insertPublication(draftEntry.id, publishId);
                                 logger.info(`Successfully submitted '${file}' for publication with publish_id: ${publishId}.`);
                             } catch (e: any) {
-                                logger.warn(`Publishing failed (maybe already published?): ${e.message}`);
+                                const msg = `Publishing failed (maybe already published?): ${e.message}`;
+                                logger.warn(msg);
+                                summary.addFailure(file, msg);
+                                continue;
                             }
+                        } else {
+                             // considered a success if we skipped because it was already done
                         }
                     } else {
-                        logger.warn(`No draft available for '${file}' to publish.`);
+                        const msg = `No draft available for '${file}' to publish.`;
+                        logger.warn(msg);
+                        summary.addFailure(file, msg);
+                        continue;
                     }
+                    summary.addSuccess();
                 } catch (error: any) {
                     logger.error(`Failed to post '${file}':`, error.message);
                     if (error.details) {
                         logger.error('API Error Details:', JSON.stringify(error.details, null, 2));
                     }
+                    summary.addFailure(file, error);
                 }
             }
+            summary.report();
         } catch (error: any) {
             logger.error('Initialization failed:', error.message);
         } finally {
@@ -467,6 +502,7 @@ program
         logger.info(`'delete' command called for path: ${rawPath}`);
         logger.debug('Options:', options);
 
+        const summary = new BatchSummary('Delete Articles');
         let currentConfig;
         let dbService: DbService | undefined;
         let wechatService;
@@ -492,19 +528,25 @@ program
                 try {
                     const articleEntry = dbService.findArticleByPath(file);
                     if (!articleEntry) {
-                        logger.warn(`Article for '${file}' not found in database.`);
+                        const msg = `Article for '${file}' not found in database.`;
+                        logger.warn(msg);
+                        summary.addFailure(file, msg);
                         continue;
                     }
 
                     const draft = dbService.findLatestDraftByArticleId(articleEntry.id);
                     if (!draft) {
-                        logger.warn(`No draft found for '${file}'.`);
+                        const msg = `No draft found for '${file}'.`;
+                        logger.warn(msg);
+                        summary.addFailure(file, msg);
                         continue;
                     }
 
                     const publication = dbService.findPublicationByDraftId(draft.id);
                     if (!publication) {
-                        logger.warn(`No publication record found for '${file}'.`);
+                        const msg = `No publication record found for '${file}'.`;
+                        logger.warn(msg);
+                        summary.addFailure(file, msg);
                         continue;
                     }
 
@@ -513,34 +555,42 @@ program
                     const status = await wechatService.getPublishStatus(publication.publish_id);
                     
                     if (status.publish_status !== 0) {
-                         logger.warn(`Publication status for '${file}' is not success (status: ${status.publish_status}). Cannot delete.`);
+                         const msg = `Publication status for '${file}' is not success (status: ${status.publish_status}). Cannot delete.`;
+                         logger.warn(msg);
+                         summary.addFailure(file, msg);
                          continue;
                     }
                     
                     const articleId = status.article_id;
                     
                     if (!articleId) {
-                        logger.error(`Could not retrieve article_id for '${file}' from publish status. Maybe it was not published successfully?`);
+                        const msg = `Could not retrieve article_id for '${file}' from publish status. Maybe it was not published successfully?`;
+                        logger.error(msg);
+                        summary.addFailure(file, msg);
                         continue;
                     }
 
                     const confirm = await confirmAction(`Are you sure you want to delete the published article for '${file}' (article_id: ${articleId})? This cannot be undone.`);
                     if (!confirm) {
                         logger.info(`Deletion cancelled for '${file}'.`);
+                        summary.addSkipped();
                         continue;
                     }
 
                     await wechatService.deletePublishedArticle(articleId);
                     dbService.deletePublication(publication.id);
                     logger.info(`Successfully deleted published article for '${file}'.`);
+                    summary.addSuccess();
 
                 } catch (error: any) {
                     logger.error(`Failed to delete '${file}':`, error.message);
                     if (error.details) {
                         logger.error('API Error Details:', JSON.stringify(error.details, null, 2));
                     }
+                    summary.addFailure(file, error);
                 }
             }
+            summary.report();
 
         } catch (error: any) {
             logger.error('An error occurred during the delete process:', error.message);
@@ -562,6 +612,7 @@ deleteAll
         logger.info(`'delete-all articles' command called.`);
         logger.debug('Options:', options);
 
+        const summary = new BatchSummary('Delete All Published Articles');
         let currentConfig;
         let wechatService;
 
@@ -602,13 +653,16 @@ deleteAll
                     const articleId = item.article_id;
                     const title = item.content?.news_item?.[0]?.title || 'Unknown Title';
                     const updateTime = new Date(item.update_time * 1000).toLocaleString();
+                    const itemIdentifier = `${title} (${articleId})`;
 
                     if (deleteAll) {
                         logger.info(`Deleting '${title}' (${articleId})...`);
                         try {
                             await wechatService.deletePublishedArticle(articleId);
+                            summary.addSuccess();
                         } catch (e: any) {
                             logger.error(`Failed to delete '${title}': ${e.message}`);
+                            summary.addFailure(itemIdentifier, e);
                             skippedCount++;
                         }
                         continue;
@@ -618,6 +672,7 @@ deleteAll
 
                     if (answer === 'q' || answer === 'quit') {
                         logger.info('Operation quit by user.');
+                        summary.report();
                         return;
                     }
 
@@ -626,8 +681,10 @@ deleteAll
                         logger.info(`Deleting '${title}' (${articleId})...`);
                          try {
                             await wechatService.deletePublishedArticle(articleId);
+                            summary.addSuccess();
                         } catch (e: any) {
                             logger.error(`Failed to delete '${title}': ${e.message}`);
+                            summary.addFailure(itemIdentifier, e);
                             skippedCount++;
                         }
                         continue;
@@ -637,17 +694,21 @@ deleteAll
                         logger.info(`Deleting '${title}' (${articleId})...`);
                          try {
                             await wechatService.deletePublishedArticle(articleId);
+                            summary.addSuccess();
                         } catch (e: any) {
                              logger.error(`Failed to delete '${title}': ${e.message}`);
+                             summary.addFailure(itemIdentifier, e);
                              skippedCount++;
                         }
                     } else {
                         logger.info(`Skipped '${title}'.`);
+                        summary.addSkipped();
                         skippedCount++;
                     }
                 }
             }
             logger.info('Finished processing all published articles.');
+            summary.report();
 
         } catch (error: any) {
             logger.error('An error occurred during delete-all articles:', error.message);
@@ -665,6 +726,7 @@ deleteAll
         logger.info(`'delete-all drafts' command called.`);
         logger.debug('Options:', options);
 
+        const summary = new BatchSummary('Delete All Drafts');
         let currentConfig;
         let wechatService;
 
@@ -705,13 +767,16 @@ deleteAll
                     const mediaId = item.media_id;
                     const title = item.content?.news_item?.[0]?.title || 'Unknown Title';
                     const updateTime = new Date(item.update_time * 1000).toLocaleString();
+                    const itemIdentifier = `${title} (${mediaId})`;
 
                     if (deleteAll) {
                         logger.info(`Deleting draft '${title}' (${mediaId})...`);
                         try {
                             await wechatService.deleteDraft(mediaId);
+                            summary.addSuccess();
                         } catch (e: any) {
                             logger.error(`Failed to delete '${title}': ${e.message}`);
+                            summary.addFailure(itemIdentifier, e);
                             skippedCount++;
                         }
                         continue;
@@ -721,6 +786,7 @@ deleteAll
 
                     if (answer === 'q' || answer === 'quit') {
                         logger.info('Operation quit by user.');
+                        summary.report();
                         return;
                     }
 
@@ -729,8 +795,10 @@ deleteAll
                         logger.info(`Deleting draft '${title}' (${mediaId})...`);
                          try {
                             await wechatService.deleteDraft(mediaId);
+                            summary.addSuccess();
                         } catch (e: any) {
                             logger.error(`Failed to delete '${title}': ${e.message}`);
+                            summary.addFailure(itemIdentifier, e);
                             skippedCount++;
                         }
                         continue;
@@ -740,17 +808,21 @@ deleteAll
                         logger.info(`Deleting draft '${title}' (${mediaId})...`);
                          try {
                             await wechatService.deleteDraft(mediaId);
+                            summary.addSuccess();
                         } catch (e: any) {
                              logger.error(`Failed to delete '${title}': ${e.message}`);
+                             summary.addFailure(itemIdentifier, e);
                              skippedCount++;
                         }
                     } else {
                         logger.info(`Skipped '${title}'.`);
+                        summary.addSkipped();
                         skippedCount++;
                     }
                 }
             }
             logger.info('Finished processing all drafts.');
+            summary.report();
 
         } catch (error: any) {
             logger.error('An error occurred during delete-all drafts:', error.message);

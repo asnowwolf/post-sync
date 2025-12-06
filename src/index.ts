@@ -20,7 +20,7 @@ async function confirmAction(query: string): Promise<boolean> {
     });
 
     return new Promise((resolve) => {
-        rl.question(query + ' (是/否): ', (answer) => {
+        rl.question(query + ' (是(Y)/否(N)): ', (answer) => {
             rl.close();
             resolve(answer.toLowerCase() === 'y');
         });

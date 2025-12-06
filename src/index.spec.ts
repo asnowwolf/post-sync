@@ -327,6 +327,47 @@ describe('CLI', () => {
         });
     });
 
+    describe('publish command', () => {
+        const mockFilePath = '/mock/path/article.md';
+        const mockOptions = { profile: 'default' };
+
+        beforeEach(async () => {
+            commandAction = commandActions['publish <path>'];
+            if (!commandAction) {
+                throw new Error("Could not find 'publish' command action.");
+            }
+            mocks.mockQuestion.mockImplementation((_query, cb) => cb('y')); // Default to 'yes' for publish command
+        });
+
+        it('should exit successfully if no files are found', async () => {
+            mocks.getFileList.mockReturnValueOnce([]); // No files found
+            await commandAction(mockFilePath, mockOptions);
+            expect(mockExit).toHaveBeenCalledWith(0);
+            // TODO: Expect logger.warn for '在指定路径未找到 Markdown 文件。'
+        });
+
+        it('should skip publishing if an article already has a publication record in the database', async () => {
+            // Setup: article and draft exist, and a publication record already exists locally
+            mocks.mockFindArticleByPath.mockReturnValueOnce({ id: 1, source_hash: TEST_SHA1_HASH });
+            mocks.mockFindLatestDraftByArticleId.mockReturnValueOnce({ id: 1, media_id: 'existing_media_id' });
+            mocks.mockGetDraft.mockResolvedValueOnce({ news_item: [] }); // Ensure draft is found on server
+            mocks.mockFindPublicationByDraftId.mockReturnValueOnce({ id: 1, draft_id: 1, publish_id: 'existing_publish_id' }); // Existing publication record
+
+            // Ensure WeChat API calls are NOT made
+            mocks.mockGetPublishStatus.mockClear(); // Clear any previous calls
+            mocks.mockPublishDraft.mockClear(); // Clear any previous calls
+
+            await commandAction(mockFilePath, mockOptions);
+
+            // Assertions
+            expect(mocks.mockFindPublicationByDraftId).toHaveBeenCalledWith(1); // Should check local DB
+            expect(mocks.mockGetPublishStatus).not.toHaveBeenCalled(); // Should NOT call WeChat API for status
+            expect(mocks.mockPublishDraft).not.toHaveBeenCalled(); // Should NOT call WeChat API to publish
+            expect(mocks.mockInsertPublication).not.toHaveBeenCalled(); // Should NOT insert new publication record
+            expect(mockExit).toHaveBeenCalledWith(0); // Should exit successfully
+        });
+    });
+
     describe('delete command', () => {
         const mockFilePath = '/mock/path/article.md';
         const mockOptions = { profile: 'default' };
@@ -336,19 +377,27 @@ describe('CLI', () => {
             if (!commandAction) {
                 throw new Error("Could not find 'delete' command action.");
             }
+            // Reset all relevant mocks to their default 'undefined' for each delete test
+            mocks.mockFindArticleByPath.mockReturnValue(undefined);
+            mocks.mockFindLatestDraftByArticleId.mockReturnValue(undefined);
+            mocks.mockFindPublicationByDraftId.mockReturnValue(undefined);
+            mocks.mockGetPublishStatus.mockClear();
+            mocks.mockDeletePublishedArticle.mockClear();
+            mocks.mockDeletePublication.mockClear();
+            mocks.mockQuestion.mockClear();
         });
 
         it('should delete a published article', async () => {
             // Mock setup
             mocks.mockFindArticleByPath.mockReturnValueOnce({ id: 1 });
             mocks.mockFindLatestDraftByArticleId.mockReturnValueOnce({ id: 1, media_id: 'draft_media_id' });
-            mocks.mockFindPublicationByDraftId.mockReturnValueOnce({ id: 1, publish_id: 'publish_id' });
+            mocks.mockFindPublicationByDraftId.mockReturnValueOnce({ id: 1, publish_id: 'existing_publish_id' });
             mocks.mockGetPublishStatus.mockResolvedValueOnce({ publish_status: 0, article_id: 'article_id' }); // Success
             mocks.mockQuestion.mockImplementation((_query, cb) => cb('y')); // Confirm
 
             await commandAction(mockFilePath, mockOptions);
 
-            expect(mocks.mockGetPublishStatus).toHaveBeenCalledWith('publish_id');
+            expect(mocks.mockGetPublishStatus).toHaveBeenCalledWith('existing_publish_id');
             expect(mocks.mockDeletePublishedArticle).toHaveBeenCalledWith('article_id');
             expect(mocks.mockDeletePublication).toHaveBeenCalledWith(1);
         });
@@ -385,6 +434,7 @@ describe('CLI', () => {
             expect(mocks.mockDeletePublishedArticle).not.toHaveBeenCalled();
             expect(mocks.mockDeletePublication).not.toHaveBeenCalled();
         });
+
     });
 
     describe('delete-all articles command', () => {

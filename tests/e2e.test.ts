@@ -179,11 +179,11 @@ describe('End-to-End Test for post-sync CLI (Full Verification)', () => {
                 console.error('Create command stderr:', stderr);
             }
 
-            expect(stdout).toContain("'create' command called");
+            expect(stdout).toContain("正在执行创建命令操作...");
             expect(stdout).not.toContain("[dotenv@"); // Should not use .env
             expect(stdout).toContain(`Database connected at ${_tempDbPathGlobal}`); // New DB path
             // Removed specific WeChat API call expectations as they can vary
-            expect(stdout).toContain("Processing");
+            expect(stdout).toContain("正在处理");
             // Verify database file exists
             await expect(fs.access(_tempDbPathGlobal)).resolves.toBeUndefined();
 
@@ -223,7 +223,7 @@ describe('End-to-End Test for post-sync CLI (Full Verification)', () => {
                 console.error('Publish command stderr:', stderr);
             }
 
-            expect(stdout).toContain("'publish' command called");
+            expect(stdout).toContain("'publish' 命令已为路径调用:");
             expect(stdout).not.toContain("[dotenv@"); // Should not use .env
             expect(stdout).toContain(`Database connected at ${_tempDbPathGlobal}`); // New DB path
             expect(stdout).toContain("Publishing draft with media_id");
@@ -255,15 +255,11 @@ describe('End-to-End Test for post-sync CLI (Full Verification)', () => {
             });
 
             console.log('Post command stdout:', stdout);
-            if (stderr) {
-                console.error('Post command stderr:', stderr);
-            }
-
-            expect(stdout).toContain("'post' command called");
+            expect(stdout).toContain("[INFO] 'post' command called for path:");
             expect(stdout).not.toContain("[dotenv@"); // Should not use .env
             expect(stdout).toContain(`Database connected at ${_tempDbPathGlobal}`); // New DB path
-            expect(stdout).toContain("Processing");
-            expect(stdout).toContain("Successfully created draft.");
+            expect(stdout).toContain("正在处理");
+            expect(stdout).toContain("Created new draft");
             expect(stdout).toContain("Attempting to publish draft");
             expect(stdout).toContain("Successfully submitted for publication.");
             expect(stdout).not.toContain("An error occurred");

@@ -4,7 +4,7 @@ import { ApiError } from '../errors.js';
 export interface RetryOptions {
     maxAttempts?: number;
     delayMs?: number; // Initial delay
-    backoffStrategy?: 'fixed' | 'exponential';
+
     maxDelayMs?: number; // Max delay cap
     retryCondition?: (error: any) => boolean;
     onRetry?: (attempt: number, error: any, delay: number) => void;
@@ -19,7 +19,7 @@ export async function retry<T>(
 ): Promise<T> {
     const maxAttempts = options?.maxAttempts ?? DEFAULT_MAX_ATTEMPTS;
     const initialDelay = options?.delayMs ?? DEFAULT_DELAY_MS;
-    const backoffStrategy = options?.backoffStrategy ?? 'fixed';
+
     const maxDelayCap = options?.maxDelayMs;
 
     const retryCondition = options?.retryCondition ?? ((error) => {
@@ -79,10 +79,7 @@ export async function retry<T>(
                 onRetry(attempt, error, currentDelay);
                 await new Promise(resolve => setTimeout(resolve, currentDelay));
 
-                // Calculate next delay
-                if (backoffStrategy === 'exponential') {
-                    currentDelay = currentDelay * 2;
-                }
+
             } else {
                 throw error;
             }

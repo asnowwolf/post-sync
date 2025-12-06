@@ -61,4 +61,37 @@ describe('retry util', () => {
         // Verify logger was called with warning about long wait
         expect(logger.warn).toHaveBeenCalledWith(expect.stringContaining('WeChat API daily quota reached'));
     });
+
+    it('should retry with a fixed delay for linear retry strategy', async () => {
+        const mockDate = new Date(2023, 9, 1, 12, 0, 0);
+        vi.setSystemTime(mockDate);
+
+        const error = new ApiError('system error', 500);
+        const fn = vi.fn()
+            .mockRejectedValueOnce(error)
+            .mockRejectedValueOnce(error)
+            .mockResolvedValueOnce('success');
+
+        const initialDelay = 1000; // 1 second
+        const maxAttempts = 3;
+
+        const retryPromise = retry(fn, { maxAttempts, delayMs: initialDelay });
+
+        // First call
+        expect(fn).toHaveBeenCalledTimes(1);
+
+        // Advance timers by initialDelay for the first retry
+        await vi.advanceTimersByTimeAsync(initialDelay);
+        expect(fn).toHaveBeenCalledTimes(2);
+        expect(logger.warn).toHaveBeenCalledWith(expect.stringContaining(`Attempt 1/${maxAttempts} failed: ${error.message}. Retrying in ${initialDelay / 1000} seconds...`));
+
+        // Advance timers by initialDelay for the second retry (should be fixed delay)
+        await vi.advanceTimersByTimeAsync(initialDelay);
+        expect(fn).toHaveBeenCalledTimes(3);
+        expect(logger.warn).toHaveBeenCalledWith(expect.stringContaining(`Attempt 2/${maxAttempts} failed: ${error.message}. Retrying in ${initialDelay / 1000} seconds...`));
+
+        const result = await retryPromise;
+        expect(result).toBe('success');
+    });
+
 });

@@ -47,7 +47,6 @@ export class WeChatService {
                 return res;
             }, {
                 delayMs: 15000,
-                backoffStrategy: 'exponential',
                 maxDelayMs: 600000,
                 maxAttempts: 4
             });
@@ -90,7 +89,6 @@ export class WeChatService {
                 return res;
             }, {
                 delayMs: 15000,
-                backoffStrategy: 'exponential',
                 maxDelayMs: 600000,
                 maxAttempts: 4
             });
@@ -138,7 +136,6 @@ export class WeChatService {
                 return res;
             }, {
                 delayMs: 15000,
-                backoffStrategy: 'exponential',
                 maxDelayMs: 600000,
                 maxAttempts: 4
             });
@@ -173,7 +170,6 @@ export class WeChatService {
                 return res;
             }, {
                 delayMs: 60000,
-                backoffStrategy: 'exponential',
                 maxDelayMs: 600000,
                 maxAttempts: 10
             });
@@ -204,7 +200,6 @@ export class WeChatService {
                 return res;
             }, {
                 delayMs: 15000,
-                backoffStrategy: 'exponential',
                 maxDelayMs: 600000,
                 maxAttempts: 4
             });
@@ -238,7 +233,6 @@ export class WeChatService {
                 return res;
             }, {
                 delayMs: 15000,
-                backoffStrategy: 'exponential',
                 maxDelayMs: 600000,
                 maxAttempts: 4,
                 retryCondition: (error) => {
@@ -287,7 +281,6 @@ export class WeChatService {
                 return res;
             }, {
                 delayMs: 15000,
-                backoffStrategy: 'exponential',
                 maxDelayMs: 600000,
                 maxAttempts: 4
             });
@@ -359,7 +352,6 @@ export class WeChatService {
                 return res;
             }, {
                 delayMs: 15000,
-                backoffStrategy: 'exponential',
                 maxDelayMs: 600000,
                 maxAttempts: 4
             });
@@ -392,7 +384,6 @@ export class WeChatService {
                 return res;
             }, {
                 delayMs: 15000,
-                backoffStrategy: 'exponential',
                 maxDelayMs: 600000,
                 maxAttempts: 4
             });
@@ -422,7 +413,6 @@ export class WeChatService {
                 return res;
             }, {
                 delayMs: 15000,
-                backoffStrategy: 'exponential',
                 maxDelayMs: 600000,
                 maxAttempts: 4
             });
@@ -455,7 +445,6 @@ export class WeChatService {
                 return res;
             }, {
                 delayMs: 15000,
-                backoffStrategy: 'exponential',
                 maxDelayMs: 600000,
                 maxAttempts: 4
             });

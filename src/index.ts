@@ -3,7 +3,7 @@ import {Command} from 'commander';
 import {getConfig} from './config.js';
 import {logger} from './logger.js';
 import {DbService} from './services/db.service.js';
-import {getFileHash, getFileList} from './utils/file.util.js';
+import {getFileList} from './utils/file.util.js';
 import {BatchSummary} from './utils/summary.util.js';
 import {MarkdownService} from './services/markdown.service.js';
 import {WeChatService} from './services/wechat.service.js';
@@ -55,7 +55,7 @@ program
     .option('-y, --yes', '跳过所有确认提示，直接执行操作')
     .action(async (rawPath, options) => {
         logger.debug("正在执行创建命令操作...");
-logger.debug('选项:', options);
+        logger.debug('选项:', options);
 
         const summary = new BatchSummary('Create Drafts');
         let currentConfig;
@@ -91,22 +91,28 @@ logger.debug('选项:', options);
                     logger.info(`正在处理 '${file}'...`);
 
                     const markdownContent = await fs.promises.readFile(file, 'utf-8');
-                    const {html, thumb_media_id, digest, author, title: extractedTitle} = await markdownService.convert(markdownContent, file, currentConfig.author);
+                    const {
+                        html,
+                        thumb_media_id,
+                        digest,
+                        author,
+                        title: extractedTitle
+                    } = await markdownService.convert(markdownContent, file, currentConfig.author);
 
                     if (!thumb_media_id) {
-                const msg = `无法为 '${file}' 生成缩略图。跳过草稿创建/更新。`;
+                        const msg = `无法为 '${file}' 生成缩略图。跳过草稿创建/更新。`;
                         logger.error(msg);
                         summary.addFailure(file, msg);
                         continue;
                     }
 
                     const title = extractedTitle || path.basename(file, '.md');
-                    const contentToHash = JSON.stringify({ title, html, digest, author, thumb_media_id });
+                    const contentToHash = JSON.stringify({title, html, digest, author, thumb_media_id});
                     const hash = crypto.createHash('sha1').update(contentToHash).digest('hex');
 
                     const articleEntry = dbService.findArticleByPath(file);
                     const draftEntry = articleEntry ? dbService.findLatestDraftByArticleId(articleEntry.id) : undefined;
-                    
+
                     let action: 'SKIP' | 'CREATE' | 'UPDATE' = 'CREATE';
                     let draftOnServer: any = null;
 
@@ -136,7 +142,7 @@ logger.debug('选项:', options);
                         summary.addSkipped();
                         continue;
                     }
-                    
+
                     if (action === 'UPDATE' && draftEntry) {
                         await wechatService.updateDraft(draftEntry.media_id, {
                             title,
@@ -145,7 +151,7 @@ logger.debug('选项:', options);
                             digest: digest || '',
                             author: author || '',
                         });
-                        
+
                         // Capture dbService in closure for transaction, ensuring it's not undefined
                         const db = dbService;
                         db.performTransaction(() => {
@@ -163,7 +169,7 @@ logger.debug('选项:', options);
                             digest: digest || '',
                             author: author || '',
                         });
-                        
+
                         const db = dbService;
                         db.performTransaction(() => {
                             if (articleEntry) {
@@ -349,22 +355,28 @@ program
                     logger.info(`正在处理 '${file}'...`);
 
                     const markdownContent = await fs.promises.readFile(file, 'utf-8');
-                    const { html, thumb_media_id, digest, author, title: extractedTitle } = await markdownService.convert(markdownContent, file, currentConfig.author);
+                    const {
+                        html,
+                        thumb_media_id,
+                        digest,
+                        author,
+                        title: extractedTitle
+                    } = await markdownService.convert(markdownContent, file, currentConfig.author);
 
                     if (!thumb_media_id) {
-                const msg = `无法为 '${file}' 生成缩略图。跳过草稿创建/更新。`;
+                        const msg = `无法为 '${file}' 生成缩略图。跳过草稿创建/更新。`;
                         logger.error(msg);
                         summary.addFailure(file, msg);
                         continue;
                     }
 
                     const title = extractedTitle || path.basename(file, '.md');
-                    const contentToHash = JSON.stringify({ title, html, digest, author, thumb_media_id });
+                    const contentToHash = JSON.stringify({title, html, digest, author, thumb_media_id});
                     const hash = crypto.createHash('sha1').update(contentToHash).digest('hex');
 
                     let articleEntry = dbService.findArticleByPath(file);
                     let draftEntry = articleEntry ? dbService.findLatestDraftByArticleId(articleEntry.id) : undefined;
-                    
+
                     let action: 'SKIP' | 'CREATE' | 'UPDATE' = 'CREATE';
                     let draftOnServer: any = null;
 
@@ -379,7 +391,7 @@ program
                             action = 'CREATE';
                         } else {
                             if (articleEntry && articleEntry.source_hash === hash) {
-                                action = 'SKIP'; 
+                                action = 'SKIP';
                             } else {
                                 action = 'UPDATE';
                             }
@@ -413,12 +425,12 @@ program
                                 if (articleEntry) {
                                     db.updateArticleHash(articleEntry.id, hash);
                                     const result = db.insertDraft(articleEntry.id, media_id);
-                                    draftEntry = { id: result.lastInsertRowid as number, media_id };
+                                    draftEntry = {id: result.lastInsertRowid as number, media_id};
                                 } else {
                                     const result = db.insertArticle(file, hash);
                                     const articleId = result.lastInsertRowid as number;
                                     const draftResult = db.insertDraft(articleId, media_id);
-                                    draftEntry = { id: draftResult.lastInsertRowid as number, media_id };
+                                    draftEntry = {id: draftResult.lastInsertRowid as number, media_id};
                                     articleEntry = db.findArticleByPath(file);
                                 }
                             });
@@ -427,12 +439,12 @@ program
                     } else {
                         logger.info(`Draft for '${file}' is up-to-date on server.`);
                     }
-                    
+
                     if (draftEntry) {
                         // Check if already published successfully
                         const existingPublication = dbService.findPublicationByDraftId(draftEntry.id);
                         let alreadyPublished = false;
-                        
+
                         if (existingPublication) {
                             try {
                                 const status = await wechatService.getPublishStatus(existingPublication.publish_id);
@@ -458,7 +470,7 @@ program
                                 continue;
                             }
                         } else {
-                             // considered a success if we skipped because it was already done
+                            // considered a success if we skipped because it was already done
                         }
                     } else {
                         const msg = `No draft available for '${file}' to publish.`;
@@ -542,18 +554,18 @@ program
                     }
 
                     logger.info(`Found publication record for '${file}' (publish_id: ${publication.publish_id}).`);
-                    
+
                     const status = await wechatService.getPublishStatus(publication.publish_id);
-                    
+
                     if (status.publish_status !== 0) {
-                         const msg = `Publication status for '${file}' is not success (status: ${status.publish_status}). Cannot delete.`;
-                         logger.warn(msg);
-                         summary.addFailure(file, msg);
-                         continue;
+                        const msg = `Publication status for '${file}' is not success (status: ${status.publish_status}). Cannot delete.`;
+                        logger.warn(msg);
+                        summary.addFailure(file, msg);
+                        continue;
                     }
-                    
+
                     const articleId = status.article_id;
-                    
+
                     if (!articleId) {
                         const msg = `Could not retrieve article_id for '${file}' from publish status. Maybe it was not published successfully?`;
                         logger.error(msg);
@@ -670,7 +682,7 @@ deleteAll
                     if (answer === 'a' || answer === 'all') {
                         deleteAll = true;
                         logger.info(`Deleting '${title}' (${articleId})...`);
-                         try {
+                        try {
                             await wechatService.deletePublishedArticle(articleId);
                             summary.addSuccess();
                         } catch (e: any) {
@@ -683,13 +695,13 @@ deleteAll
 
                     if (answer === 'y' || answer === 'yes') {
                         logger.info(`Deleting '${title}' (${articleId})...`);
-                         try {
+                        try {
                             await wechatService.deletePublishedArticle(articleId);
                             summary.addSuccess();
                         } catch (e: any) {
-                             logger.error(`Failed to delete '${title}': ${e.message}`);
-                             summary.addFailure(itemIdentifier, e);
-                             skippedCount++;
+                            logger.error(`Failed to delete '${title}': ${e.message}`);
+                            summary.addFailure(itemIdentifier, e);
+                            skippedCount++;
                         }
                     } else {
                         logger.info(`Skipped '${title}'.`);
@@ -784,7 +796,7 @@ deleteAll
                     if (answer === 'a' || answer === 'all') {
                         deleteAll = true;
                         logger.info(`Deleting draft '${title}' (${mediaId})...`);
-                         try {
+                        try {
                             await wechatService.deleteDraft(mediaId);
                             summary.addSuccess();
                         } catch (e: any) {
@@ -797,13 +809,13 @@ deleteAll
 
                     if (answer === 'y' || answer === 'yes') {
                         logger.info(`Deleting draft '${title}' (${mediaId})...`);
-                         try {
+                        try {
                             await wechatService.deleteDraft(mediaId);
                             summary.addSuccess();
                         } catch (e: any) {
-                             logger.error(`Failed to delete '${title}': ${e.message}`);
-                             summary.addFailure(itemIdentifier, e);
-                             skippedCount++;
+                            logger.error(`Failed to delete '${title}': ${e.message}`);
+                            summary.addFailure(itemIdentifier, e);
+                            skippedCount++;
                         }
                     } else {
                         logger.info(`Skipped '${title}'.`);
@@ -819,6 +831,34 @@ deleteAll
             logger.error('An error occurred during delete-all drafts:', error.message);
             if (error.details) {
                 logger.error('API 错误详情:', JSON.stringify(error.details, null, 2));
+            }
+        }
+    });
+
+program
+    .command('reset-quota')
+    .description('重置 API 调用额度')
+    .option('--profile <id>', '指定要使用的配置 profile ID')
+    .action(async (options) => {
+        logger.info(`'reset-quota' command called.`);
+        logger.debug('选项:', options);
+
+        let currentConfig;
+        let wechatService;
+
+        try {
+            currentConfig = getConfig(options.profile);
+            wechatService = new WeChatService({
+                appId: currentConfig.appId,
+                appSecret: currentConfig.appSecret,
+                wechatApiBaseUrl: currentConfig.wechatApiBaseUrl,
+            });
+
+            await wechatService.clearAllQuota();
+        } catch (error: any) {
+            logger.error('Failed to reset quota:', error.message);
+            if (error.details) {
+                logger.error('API Error Details:', JSON.stringify(error.details, null, 2));
             }
         }
     });

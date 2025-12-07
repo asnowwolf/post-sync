@@ -458,4 +458,32 @@ export class WeChatService {
             throw new ApiError(`Failed to batch get drafts: ${error.message}`, error.response?.status, error.response?.data);
         }
     }
+
+    public async clearAllQuota(): Promise<void> {
+        const token = await this.getAccessToken();
+        const url = `${this.options.wechatApiBaseUrl}/cgi-bin/clear_quota?access_token=${token}`;
+        const data = { appid: this.options.appId };
+
+        logger.info(`Clearing all API quotas for appid '${this.options.appId}'...`);
+        try {
+            await retry(async () => {
+                const res = await this.http.post(url, data, { proxy: false });
+                if (res.data.errcode) {
+                    throw new ApiError(`WeChat API Error: ${res.data.errmsg}`, res.status, res.data);
+                }
+                return res;
+            }, {
+                delayMs: 15000,
+                maxDelayMs: 600000,
+                maxAttempts: 4
+            });
+            logger.info(`Successfully cleared all API quotas.`);
+        } catch (error: any) {
+            logger.error(`Failed to clear all API quotas after retries:`, error.message);
+            if (error instanceof ApiError) {
+                throw error;
+            }
+            throw new ApiError(`Failed to clear all API quotas: ${error.message}`, error.response?.status, error.response?.data);
+        }
+    }
 }

@@ -209,6 +209,38 @@ describe('WeChatService', () => {
             { offset, count, no_content: 1 },
             { proxy: false }
         );
-        expect(result).toEqual(mockResponse);
-    });
-});
+                expect(result).toEqual(mockResponse);
+            });
+        
+            it('should clear all quota', async () => {
+                mockPost.mockResolvedValueOnce({
+                    data: { errcode: 0, errmsg: 'ok' },
+                    status: 200,
+                });
+        
+                await wechatService.clearAllQuota();
+        
+                expect(mockPost).toHaveBeenCalledWith(
+                    `${mockConfig.wechatApiBaseUrl}/cgi-bin/clear_quota?access_token=valid_token`,
+                    { appid: mockConfig.appId },
+                    { proxy: false }
+                );
+            });
+        
+            it('should clear specific api quota', async () => {
+                const apiPath = '/cgi-bin/freepublish/submit';
+                mockPost.mockResolvedValueOnce({
+                    data: { errcode: 0, errmsg: 'ok' },
+                    status: 200,
+                });
+        
+                await wechatService.clearApiQuota(apiPath);
+        
+                expect(mockPost).toHaveBeenCalledWith(
+                    `${mockConfig.wechatApiBaseUrl}/cgi-bin/openapi/quota/clear?access_token=valid_token`,
+                    { appid: mockConfig.appId, cgi_path: apiPath },
+                    { proxy: false }
+                );
+            });
+        });
+        
